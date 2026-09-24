@@ -1,0 +1,1 @@
+cargo check 与 build 分工、include_str! 编译期嵌入、target 被占用、产物≠源码

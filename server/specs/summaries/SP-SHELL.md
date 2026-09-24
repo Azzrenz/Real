@@ -1,0 +1,1 @@
+命令自动分派到 Git Bash / cmd / PS 的对照表；中文检索必须走 grep，禁用 findstr（GBK 静默失真）

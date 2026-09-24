@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "providers": [
+    {
+      "id": "deepseek",
+      "name": "DeepSeek",
+      "base_url": "https://api.deepseek.com",
+      "models": []
+    },
+    {
+      "id": "glm",
+      "name": "智谱 BigModel",
+      "base_url": "https://open.bigmodel.cn/api/paas/v4",
+      "models": [
+        {
+          "id": "glm-5.3-flash",
+          "max_output_tokens": 131072
+        }
+      ]
+    }
+  ]
+}

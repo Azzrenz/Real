@@ -1,0 +1,698 @@
+
+/* The main window's own silhouette, and it must match the dock's exactly: same --dock-border
+   hairline, same --radius corner, same idea of "the surface owns the outline". Until now .app had
+   neither border nor radius and simply leaned on body's fill, so the chat panel had no edge of its
+   own -- it trailed off into whatever sat next to it, exposing a strip of bare near-white panel at
+   the seam, while the dock right beside it was properly outlined. Same token on both sides means
+   the seam is two matching edges, and the two panels' visible tops and bottoms are the same line
+   rather than differing by a border width.
+   overflow:hidden clips the square-cornered children (titlebar, chat surface) to the radius; fixed
+   -position overlays are not affected by it, and portals render outside .app anyway. */
+.app {
+  display: flex; flex-direction: column;
+  height: 100%;
+  background: var(--bg);
+  border: 1px solid var(--dock-border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+/* 32px, and .dock-bar across the seam is pinned to the same number: the two are read as one
+   continuous strip, so a height set on one side alone shows up as a step at the junction. */
+.titlebar {
+  position: relative;
+  flex-shrink: 0;
+  height: 32px;
+
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 6px 0 10px;
+  background: var(--sidebar-bg);
+  border-bottom: 1px solid var(--border);
+  user-select: none;
+}
+.titlebar-drag {
+  flex: 1 1 auto;
+  align-self: stretch;
+  min-width: 0;
+  -webkit-app-region: drag;
+  app-region: drag;
+}
+/* A fixed 24px box, the same height as .titlebar-menu-item -- that, plus matching font sizes, is
+   what puts "Real Agent" and the menu labels on one baseline. The offset below is what actually
+   finishes that job: the menu labels are CJK, so they come from a fallback face whose baseline sits
+   about 1.6px lower inside the identical box, and the Latin wordmark read as floating above them.
+   Measured on the rendered bar, not guessed. */
+.titlebar-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 24px;
+  padding: 0 9px 0 4px;
+  transform: translateY(1.6px);
+  flex-shrink: 0;
+  border: none;
+  background: transparent;
+  border-radius: 6px;
+  font: inherit;
+  cursor: pointer;
+  transition: background var(--t-fast);
+}
+.titlebar-brand:hover { background: var(--hover-soft); }
+/* Without this the mark had no size of its own: a 512px source inside a flex row simply got
+   squeezed until the line fitted, so its size -- and with it the whole proportion of brand to
+   text -- was an accident of how much room was left. flex:none keeps it from being resized. */
+.titlebar-logo { width: 18px; height: 18px; flex: none; }
+.titlebar-brand > svg {
+  width: 15px;
+  height: 15px;
+  display: block;
+  flex-shrink: 0;
+}
+.titlebar-brand b {
+  font-family: var(--font-display);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+  color: var(--text);
+  letter-spacing: 0.01em;
+}
+.titlebar-menu {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  margin-left: 10px;
+  flex-shrink: 0;
+}
+/* Same 24px box and same size as the brand, one weight and one colour step lighter: the app name
+   leads, the menus sit behind it until you reach for them. */
+.titlebar-menu-item {
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 10px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  font-family: var(--font-display);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  letter-spacing: 0.01em;
+  color: var(--muted);
+  cursor: default;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.titlebar-menu-item:hover { background: var(--hover-soft); color: var(--text); }
+.titlebar-menu-item-wrap {
+  position: relative;
+  display: inline-flex;
+}
+.titlebar-menu-item-wrap.open .titlebar-menu-item {
+  background: var(--hover-soft);
+  color: var(--text);
+}
+.titlebar-menu-pop {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 200;
+  min-width: 168px;
+  padding: 5px;
+  border-radius: 10px;
+  background: var(--panel);
+  border: 1px solid var(--border-strong);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.16);
+  display: flex;
+  flex-direction: column;
+  animation: fade-up var(--t-base) ease;
+}
+.menu-item {
+  padding: 6px 12px;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  text-align: left;
+  font: inherit;
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+  cursor: default;
+}
+.menu-item:hover { background: var(--hover-soft); color: var(--text); }
+.menu-sep { height: 1px; margin: 4px 6px; background: var(--border); }
+.about-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 900;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(15, 16, 20, 0.45);
+  animation: fade-in var(--t-base) ease;
+}
+.about-card {
+  width: min(480px, calc(100vw - 48px));
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 22px;
+  border-radius: 14px;
+  background: var(--panel);
+  border: 1px solid var(--border-strong);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.28);
+  animation: fade-up 0.18s ease;
+  font-family: var(--font-sans);
+}
+.about-head { display: flex; align-items: center; gap: 12px; }
+.about-logo { width: 42px; height: 42px; }
+.about-name { font-size: var(--fs-lg); font-weight: var(--fw-semibold, 600); color: var(--text); }
+.about-sub { font-size: var(--fs-sm); color: var(--muted); }
+.about-close {
+  margin-left: auto;
+  width: 28px; height: 28px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: none; border-radius: 7px;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+.about-close:hover { background: var(--hover-soft); color: var(--text); }
+.about-desc {
+  font-size: var(--fs-sm);
+  line-height: 1.7;
+  color: var(--text-2);
+}
+.about-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.about-k { font-size: var(--fs-sm); font-weight: var(--fw-semibold, 600); color: var(--text); margin-bottom: 6px; }
+.about-ul { margin: 0; padding-left: 16px; display: flex; flex-direction: column; gap: 4px; }
+.about-ul li { font-size: var(--fs-sm); line-height: 1.55; color: var(--text-2); }
+.about-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-top: 12px;
+  border-top: 1px solid var(--border, rgba(0, 0, 0, 0.08));
+  font-size: var(--fs-xs);
+  color: var(--muted);
+}
+.about-copy { letter-spacing: 0.02em; }
+.titlebar-title {
+  position: relative;
+  z-index: 1;
+  font-size: var(--fs-micro);
+  color: var(--muted);
+  letter-spacing: 0.02em;
+  pointer-events: none;
+  -webkit-app-region: drag;
+}
+.titlebar-view {
+  position: relative;
+  z-index: 1;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  margin-right: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  border-radius: 5px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-bold);
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  white-space: nowrap;
+  box-shadow: none;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+  transition: background 0.18s ease, color 0.18s ease;
+}
+.titlebar-view:hover {
+  background: var(--hover-soft);
+  color: var(--text);
+}
+.titlebar-view .tv-ico,
+.titlebar-home svg,
+.titlebar-view svg {
+  width: 18px;
+  height: 18px;
+  display: block;
+}
+.titlebar-home svg {
+  width: 19px;
+  height: 19px;
+}
+.titlebar-actions {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+.titlebar-btn {
+  width: 42px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  color: var(--text-2);
+  border-radius: 6px;
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+  transition: background var(--t-base) var(--ease-standard);
+}
+.titlebar-btn:hover { background: var(--hover-soft); }
+.titlebar-btn--close:hover { background: var(--danger-soft); color: var(--danger); }
+
+.app-body { display: flex; flex: 1; min-height: 0; }
+
+.boot {
+  position: relative;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: var(--sp-3); height: 100%;
+  color: var(--muted);
+  overflow: hidden;
+  background:
+    radial-gradient(120% 70% at 50% 115%, var(--real-soft) 0%, transparent 55%),
+    var(--bg);
+}
+.boot .boot-flame {
+  color: var(--real-bright);
+  filter: drop-shadow(0 0 10px var(--real)) drop-shadow(0 0 22px var(--real-soft));
+  animation: pulse 1.6s ease-in-out infinite;
+}
+.boot .boot-name {
+  font-family: var(--font-display);
+  font-size: var(--fs-3xl); font-weight: var(--fw-semibold);
+  letter-spacing: var(--ls-brand); text-indent: var(--ls-brand);
+  color: var(--text);
+}
+.boot .boot-hint {
+  font-size: var(--fs-sm); color: var(--muted);
+  letter-spacing: var(--ls-label); margin-top: var(--sp-1);
+  animation: boot-hint 1.6s ease-in-out infinite;
+}
+@keyframes boot-hint {
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 1; }
+}
+
+.main {
+  flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0;
+  background: var(--chat-bg);
+  animation: fade-in var(--t-base) var(--ease-standard);
+}
+.banner-error {
+  background: var(--danger-soft); color: var(--danger);
+  padding: var(--sp-2) var(--sp-5); font-size: var(--fs-sm);
+  display: flex; align-items: center; gap: var(--sp-2);
+}
+
+/* ============================================================
+   Sidebar
+   ============================================================ */
+.sidebar {
+  width: var(--sidebar-w); min-width: var(--sidebar-w);
+  background: var(--sidebar-bg);
+  display: flex; flex-direction: column;
+  border-right: 1px solid var(--border);
+}
+.app.sidebar-collapsed .sidebar { display: none; }
+.app.sidebar-collapsed { --chat-max: 1400px; }
+
+.sidebar-head {
+  display: flex; align-items: center; justify-content: flex-end;
+  padding: var(--sp-2) 6px var(--sp-1);
+}
+.sidebar-new { padding: 0 10px var(--sp-3); margin-top: var(--sp-3); }
+.new-task-btn {
+  width: 100%;
+  display: inline-flex; align-items: center; justify-content: flex-start; gap: 8px;
+  padding: var(--sp-2) var(--sp-3) var(--sp-2) var(--sp-4);
+  background: transparent;
+  color: var(--text-2);
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  font-family: var(--font-sans);
+  font-size: var(--fs-sm); font-weight: var(--fw-regular);
+  letter-spacing: var(--ls-label);
+  cursor: pointer;
+  transition: color var(--t-fast), border-color var(--t-fast);
+}
+.new-task-btn:hover { color: var(--text); border-color: var(--border-soft); }
+.new-task-btn:active { transform: translateY(1px); }
+.new-task-btn svg { flex-shrink: 0; }
+
+.sidebar-list { flex: 0 0 auto; overflow: visible; padding: var(--sp-1) var(--sp-2) var(--sp-2); }
+.session-item {
+  position: relative;
+  padding: 7px 10px; border-radius: 8px;
+  cursor: pointer; margin-bottom: 1px;
+}
+.session-item:hover .session-title { font-weight: var(--fw-book); color: var(--text); }
+.session-item.active { background: var(--real-soft); }
+.session-item.active::before {
+  content: '';
+  position: absolute; left: 0; top: 7px; bottom: 7px;
+  width: 2.5px; border-radius: 2px;
+  background: var(--real);
+  box-shadow: 0 0 6px var(--real);
+}
+.session-row { display: flex; align-items: center; gap: var(--sp-2); min-width: 0; }
+.session-title {
+  flex: 0 1 auto; min-width: 0;
+  font-weight: var(--fw-regular); font-size: var(--fs-sm);
+  color: var(--text);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  transition: color var(--t-fast) ease;
+}
+/* Task area tag (the backend infers it from the round's changed paths; written once so it
+   cannot drift): sits right after the title and never shrinks — the title ellipsises first. */
+.session-area {
+  flex-shrink: 0;
+  font-size: var(--fs-micro); color: var(--muted);
+  background: var(--hover-soft);
+  padding: 1px 5px; border-radius: 4px;
+  white-space: nowrap;
+}
+.session-time {
+  color: var(--faint); font-size: var(--fs-micro);
+  flex-shrink: 0; margin-left: auto;
+  font-variant-numeric: tabular-nums;
+}
+.status-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--faint); flex-shrink: 0; }
+.status-dot.st-planning, .status-dot.st-executing, .status-dot.st-solving,
+.status-dot.st-reflecting, .status-dot.st-replanning {
+  background: var(--real);
+  box-shadow: 0 0 6px var(--real);
+  animation: pulse 1.2s infinite;
+}
+.status-dot.st-done, .status-dot.st-cancelled, .status-dot.st-idle { visibility: hidden; }
+.status-dot.st-done { background: var(--ok); }
+.status-dot.st-error, .status-dot.st-cancelled { background: var(--danger); }
+@keyframes pulse { 50% { opacity: 0.35; } }
+.sidebar-empty { color: var(--muted); text-align: center; padding: 28px 0; font-size: var(--fs-sm); }
+.brand-mark {
+  display: block;
+  border-radius: 50%;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.18));
+  transition: transform var(--t-fast) ease;
+}
+.brand-mark:hover { transform: scale(1.06); }
+
+.brand-mark:not(svg) {
+  border-radius: 0;
+}
+.titlebar-brand > img {
+  width: 18px;
+  height: 18px;
+  display: block;
+  flex-shrink: 0;
+}
+.brand-name {
+  font-family: var(--font-display);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+  color: var(--text);
+  letter-spacing: 0.02em;
+}
+
+.session-group { margin-bottom: var(--sp-3); }
+.session-group-label {
+  font-size: var(--fs-micro); font-weight: var(--fw-medium); color: var(--faint);
+  letter-spacing: var(--ls-label); padding: var(--sp-2) 10px var(--sp-1);
+}
+
+/* 左栏层次：新建任务 → 全部任务。用 order 排，不动 DOM。 */
+.sidebar-new { order: 1; }
+.sidebar-list { order: 2; }
+
+/* 整列滚动：任务多时一起滚，任务列表不再单独吃掉高度。 */
+.sidebar { overflow-y: auto; }
+
+.ctx-menu {
+  position: fixed; z-index: var(--z-popover);
+  min-width: 150px;
+  margin: 0; padding: 4px;
+  list-style: none;
+  background: var(--bg-elev);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  animation: pop-in var(--t-base) var(--ease-spring);
+}
+.ctx-item {
+  display: flex; align-items: center; gap: var(--sp-2);
+  padding: 7px 10px;
+  font-size: var(--fs-sm); color: var(--text);
+  border-radius: calc(var(--radius) - 2px);
+  cursor: pointer;
+  transition: color var(--t-fast);
+}
+.ctx-item:hover { font-weight: var(--fw-book); color: var(--text); }
+.ctx-item.danger { color: var(--danger); }
+.ctx-item.danger:hover { font-weight: var(--fw-book); color: var(--danger); }
+
+.rename-input {
+  width: 100%;
+  padding: 2px 6px;
+  background: var(--panel-2);
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  color: var(--text);
+  font: inherit;
+  font-size: var(--fs-sm);
+  outline: none;
+}
+.rename-input:focus { box-shadow: var(--real-ring); }
+
+.empty-state {
+  flex: 1; display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  gap: var(--sp-6);
+  padding: var(--sp-8) 0 var(--sp-10);
+  overflow-y: auto;
+  color: var(--muted);
+}
+.empty-brand { display: flex; flex-direction: column; align-items: center; }
+/* One axis for everything on this page: guide cards and the start box share the same
+   width as the chat composer, so both screens line up left and right. */
+.empty-inner {
+  display: flex; flex-direction: column; align-items: center;
+  gap: var(--sp-6);
+  width: clamp(var(--chat-min), var(--chat-fill), var(--chat-max));
+  max-width: calc(100% - 2 * var(--chat-gutter));
+}
+.empty-state .mark {
+  color: var(--real);
+  filter: drop-shadow(0 0 14px var(--real-soft));
+  animation: pulse 3s ease-in-out infinite;
+}
+.empty-state h2 {
+  margin: var(--sp-3) 0 0;
+  font-family: var(--font-display);
+  font-size: var(--fs-3xl); font-weight: var(--fw-semibold);
+  letter-spacing: var(--ls-brand); text-indent: var(--ls-brand);
+  color: var(--text);
+}
+.empty-state .slogan {
+  font-family: var(--font-display);
+  font-size: var(--fs-sm); color: var(--muted);
+  margin: 4px 0 0; letter-spacing: 0.4em;
+  text-indent: 0.4em;
+}
+
+.empty-guide {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 10px;
+  width: 100%;
+}
+.guide-card {
+  display: flex; flex-direction: column; gap: 5px;
+  padding: 11px 13px;
+  border: 1px solid color-mix(in srgb, var(--en-term) 45%, transparent);
+  border-radius: var(--radius-lg);
+  background: var(--panel-2);
+}
+.guide-head { display: flex; align-items: center; gap: 7px; color: var(--real); }
+.guide-k { font-family: var(--font-display); font-size: var(--fs-sm); font-weight: var(--fw-medium); color: var(--text); }
+.guide-v { margin: 0; font-size: var(--fs-xs); line-height: 1.7; color: var(--muted); }
+
+.start-box {
+  width: 100%;
+  display: flex; flex-direction: column;
+  border: 2px solid color-mix(in srgb, var(--en-term) 45%, transparent);
+  border-radius: var(--radius-lg);
+  /* Transparent, matching .chat-input-box: an opaque --panel fill painted a near-white block
+     that did not match the chat panel, so the start-page and in-task composers looked unrelated. */
+  background: transparent;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06), 0 3px 10px rgba(0, 0, 0, 0.04);
+  transition: border-color var(--t-base) var(--ease-standard), box-shadow var(--t-base) var(--ease-standard);
+}
+.start-box:focus-within { border-color: var(--en-term); box-shadow: var(--real-ring); }
+
+/* 起始页现在直接用任务内那个 Composer。它的外层留白与底色是为对话面板设计的
+   （.chat-input-wrap 自带 --chat-bg 和底部 35px），在起始页要收掉，
+   让输入框严丝合缝地待在 .empty-inner 的宽度里，样式与旧的 .start-box 一致。 */
+.start-composer { width: 100%; }
+.start-composer .chat-input-wrap { padding: 0; background: transparent; }
+.start-composer .chat-input-box { width: 100%; margin: 0; }
+.start-input {
+  width: 100%; min-height: 78px;
+  padding: 14px 16px 4px;
+  border: none; outline: none; resize: none;
+  background: transparent;
+  font-family: var(--font-sans); font-size: var(--fs-base); line-height: 1.7;
+  color: var(--text);
+}
+.start-input::placeholder { color: var(--faint); }
+.start-send {
+  align-self: flex-end;
+  display: inline-flex; align-items: center; gap: 6px;
+  margin: 0 10px 10px;
+  padding: 7px 14px;
+  border: none; border-radius: 8px;
+  background: var(--real); color: var(--chat-bg);
+  font-family: var(--font-sans); font-size: var(--fs-sm); font-weight: var(--fw-medium);
+  cursor: pointer;
+  transition: filter var(--t-fast), transform 0.18s var(--ease-standard);
+}
+.start-send:hover:not(:disabled) { filter: brightness(1.08); transform: scale(1.03); }
+.start-send:active:not(:disabled) { transform: scale(0.97); }
+.start-send:disabled { opacity: 0.4; cursor: default; }
+
+.titlebar-home {
+  position: relative;
+  width: 26px;
+  height: 26px;
+  margin-left: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-bold);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.titlebar-home:hover {
+  background: var(--hover-soft);
+  color: var(--text);
+}
+.titlebar [data-tip]::after {
+  content: attr(data-tip);
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 4px 9px;
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+  font-family: var(--font-display);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-medium);
+  white-space: nowrap;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.14);
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.12s ease 0.05s, visibility 0.12s ease 0.05s;
+  pointer-events: none;
+  z-index: 30;
+}
+.titlebar [data-tip]:hover::after {
+  opacity: 1;
+  visibility: visible;
+}
+
+.app-body { position: relative; }
+.sidebar-hotzone {
+  position: absolute;
+  left: 0;
+  /* Hover target is the button and a small ring around it (~1x the chevron), not the whole
+     window edge. A full-height strip stole hovers from anything sitting near the edge. */
+  top: 50%;
+  transform: translateY(-50%);
+  height: 66px;
+  width: 22px;
+  z-index: 30;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  padding: 0;
+}
+.sidebar-hotzone .hz-arrow {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 22px;
+  height: 58px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0 8px 8px 0;
+  background: var(--real);
+  color: var(--on-real);
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+}
+.sidebar-hotzone:hover .hz-arrow { opacity: 1; }
+
+/* One affordance, two edges: both hotzones draw the same chevron, so the pair reads as a set.
+   The glyph points right by nature; each side mirrors it so the arrow always aims into the panel
+   it will open -- the dock's always, the sidebar's only while that panel is closed. */
+.hz-arrow svg { display: block; }
+.dock-hotzone .hz-arrow svg,
+.sidebar-hotzone .hz-arrow svg { transform: scaleX(-1); }
+.app.sidebar-collapsed .sidebar-hotzone .hz-arrow svg { transform: none; }
+
+/* The right dock's hotzone: the mirror of the one above, on the opposite edge. Same hit strip and
+   same reveal-on-hover arrow, with the corner rounding flipped so the tab hangs off the seam. */
+.dock-hotzone {
+  position: absolute;
+  right: 0;
+  /* Same as the left edge: a compact ring around the tab, not a full-height strip. */
+  top: 50%; transform: translateY(-50%);
+  height: 66px;
+  width: 22px;
+  z-index: 30;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  padding: 0;
+}
+.dock-hotzone .hz-arrow {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 22px;
+  height: 58px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px 0 0 8px;
+  background: var(--real);
+  color: var(--on-real);
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+}
+.dock-hotzone:hover .hz-arrow { opacity: 1; }

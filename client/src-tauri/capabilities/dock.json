@@ -1,0 +1,14 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "dock",
+  "description": "右侧栏独立窗口：自绘标题栏（分离/停靠、最小化、关闭）+ 三边拉伸手柄",
+  "windows": ["right-dock"],
+  "permissions": [
+    "core:default",
+    "core:window:allow-start-dragging",
+    "core:window:allow-minimize",
+    "core:window:allow-start-resize-dragging",
+    "core:window:allow-close",
+    "opener:default"
+  ]
+}

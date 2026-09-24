@@ -1,0 +1,213 @@
+
+.tool-run-narration {
+  margin: 2px 0 4px;
+  font-size: var(--fs-base); line-height: 1.85; font-weight: var(--fw-book);
+  color: var(--text);
+  overflow-wrap: break-word; word-break: break-word;
+  min-width: 0;
+}
+.tool-run > .flow-row { margin: 0; }
+.flow-row.running .tool-spin { animation: tool-spin 1s linear infinite; transform-origin: 50% 50%; }
+.read-window {
+  margin: 0;
+  max-height: 280px;
+  overflow: auto;
+  padding: 8px 12px;
+  border: 1px solid var(--border-soft);
+  border-radius: 10px;
+  background: var(--inset);
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm); line-height: 1.6;
+  white-space: pre-wrap; word-break: break-word;
+  color: var(--code-fg);
+}
+.read-window > .diff-line { display: block; padding: 0 2px; border-radius: 3px; }
+.tool-card .flow-row-title { flex: 0 1 auto; }
+.tool-card .flow-row-caret { margin-left: -4px; }
+.tool-detail {
+  display: flex; flex-direction: column; gap: 2px;
+  font-size: var(--fs-sm); line-height: 1.65;
+  color: var(--text-2);
+}
+.tool-section {
+  display: flex; flex-direction: column; gap: 6px;
+  margin-top: 12px;
+}
+.tool-section:first-child { margin-top: 2px; }
+.tool-section-head {
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-semibold);
+  color: var(--faint);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-bottom: 2px;
+}
+.tool-kv {
+  display: flex; gap: 10px;
+  align-items: flex-start;
+}
+.tool-k {
+  flex-shrink: 0; width: 88px;
+  padding-top: 1px;
+  color: var(--faint);
+  font-size: var(--fs-sm);
+}
+.tool-v {
+  flex: 1; min-width: 0;
+  color: var(--text-2);
+  font-size: var(--fs-sm); line-height: 1.6;
+  font-family: var(--font-mono);
+  white-space: pre-wrap; word-break: break-all;
+}
+.tool-pending {
+  display: inline-flex; align-items: center; gap: 7px;
+  font-size: var(--fs-sm); color: var(--faint);
+}
+.tool-pending-dot {
+  width: 6px; height: 6px; border-radius: 50%; flex: none;
+  background: var(--real);
+  animation: danger-dot-pulse 1.6s ease-in-out infinite;
+}
+.tool-out {
+  margin: 0;
+  max-height: 280px;
+  overflow: auto;
+  padding: 8px 12px;
+  border: 1px solid var(--border-soft);
+  border-radius: 10px;
+  background: var(--inset);
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm); line-height: 1.6;
+  white-space: pre-wrap; word-break: break-word;
+  color: var(--faint);
+}
+.tool-exit-code {
+  color: var(--warn);
+  font-variant-numeric: tabular-nums;
+}
+.tool-error-box {
+  max-height: 280px;
+  overflow: auto;
+  padding: 8px 12px;
+  border: 1px solid color-mix(in srgb, var(--real) 32%, transparent);
+  border-left: 3px solid var(--real);
+  border-radius: 10px;
+  background: var(--inset);
+}
+.tool-error-head {
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-semibold);
+  color: var(--real-bright);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+.tool-error-text {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm); line-height: 1.6;
+  white-space: pre-wrap; word-break: break-word;
+  color: var(--text-2);
+}
+/* diff: - red delete / + green add / context neutral */
+.diff-body {
+  margin: 0;
+  max-height: 280px;
+  overflow: auto;
+  padding: 8px 12px;
+  border: 1px solid var(--border-soft);
+  border-radius: 10px;
+  background: var(--inset);
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm); line-height: 1.6;
+  white-space: pre-wrap; word-break: break-word;
+  color: var(--code-fg);
+}
+.diff-line {
+  display: block;
+  padding: 0 4px;
+  border-radius: 3px;
+}
+.diff-del { color: var(--diff-del-fg); background: var(--diff-del-bg); }
+.diff-add { color: var(--diff-add-fg); background: var(--diff-add-bg); }
+.diff-ctx { color: var(--text-2); }
+.tool-open-web {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  margin-left: 2px;
+  border-radius: 6px;
+  color: var(--muted);
+  cursor: pointer;
+  transition: color var(--t-fast), background var(--t-fast);
+}
+.tool-open-web:hover {
+  color: var(--real-bright);
+  background: color-mix(in srgb, var(--real) 10%, transparent);
+}
+.tool-fail-note {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin: 4px 0 0 22px;
+  padding: 5px 8px;
+  border-radius: 6px;
+  background: var(--inset);
+  font-size: var(--fs-sm);
+  line-height: 1.55;
+  color: var(--text-2);
+}
+.tool-fail-label {
+  flex: none;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--real) 18%, transparent);
+  color: var(--real);
+  font-weight: var(--fw-medium);
+}
+.tool-card.warn .tool-fail-label {
+  background: color-mix(in srgb, var(--real) 16%, transparent);
+  color: var(--real);
+}
+
+.tool-reason {
+  margin: 2px 0 0 22px;
+  padding: 2px 8px;
+  border-left: 2px solid color-mix(in srgb, var(--file-fg) 45%, transparent);
+  font-size: var(--fs-sm);
+  line-height: 1.55;
+  color: var(--text-2);
+}
+
+.read-window,
+.diff-body,
+.tool-out,
+.run-out {
+  max-height: 300px;
+  scrollbar-width: thin;
+}
+
+/* run / verify: the invocation and its echo are two halves of one call, so they share a
+   single card -- IN on top, the echo below, split by a hairline. The echo used to carry
+   its own box, which left the arguments floating outside it: two halves of one call
+   reading as two unrelated blocks. */
+.tool-cmd {
+  border: 1px solid var(--border-soft);
+  border-radius: 10px;
+  background: var(--inset);
+  padding: 8px 12px;
+  min-width: 0;
+}
+/* Only when something precedes it: verify has no IN section, and a top rule would then
+   draw a stray line along the top edge of the card. */
+.tool-cmd .run-body:not(:first-child) {
+  margin-top: 8px; padding-top: 8px;
+  border-top: 1px solid var(--border-soft);
+}
+/* The card owns the frame now; keeping the echo's own box would nest two frames. */
+.tool-cmd .run-out {
+  border: none; border-radius: 0; background: transparent;
+  padding: 0;
+}

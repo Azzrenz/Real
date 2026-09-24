@@ -1,0 +1,101 @@
+
+/* balance (402) friendly card */
+.pay-error-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  margin: var(--sp-3) 0;
+  padding: var(--sp-4);
+  border-radius: var(--radius);
+  background: var(--panel);
+  border: 1px solid var(--border-strong);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-copy);
+  color: var(--text);
+  animation: fade-up var(--t-base) var(--ease-standard);
+}
+.pay-error-head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+.pay-error-icon { color: var(--text-2); }
+.pay-error-title {
+  font-size: var(--fs-base);
+  font-weight: var(--fw-semibold);
+  color: var(--text);
+}
+.pay-error-body {
+  color: var(--text-2);
+}
+.pay-error-toggle {
+  align-self: flex-start;
+  padding: 0;
+  background: none;
+  border: none;
+  font: inherit;
+  font-size: var(--fs-xs);
+  color: var(--muted);
+  cursor: pointer;
+  transition: color var(--t-fast), font-weight var(--t-fast);
+}
+.pay-error-toggle:hover {
+  color: var(--text);
+  font-weight: var(--fw-medium);
+}
+.pay-error-raw {
+  margin: 0;
+  padding: 10px 12px;
+  max-height: 240px;
+  overflow: auto;
+  border-radius: 6px;
+  background: var(--inset);
+  border: 1px solid var(--border-soft);
+  color: var(--text-2b);
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  line-height: var(--lh-dense);
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+.pay-error-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+.pay-topup-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: 7px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border-strong);
+  background: var(--panel-2, var(--panel));
+  color: var(--text);
+  font: inherit;
+  font-size: var(--fs-sm);
+  cursor: pointer;
+  transition: border-color var(--t-fast), background var(--t-fast), transform var(--t-fast);
+}
+.pay-topup-btn:hover {
+  border-color: var(--real-bright);
+  transform: translateY(-1px);
+}
+.pay-topup-btn.primary {
+  background: var(--btn-primary-bg);
+  border-color: var(--btn-primary-bg);
+  color: var(--btn-primary-text);
+}
+.pay-topup-label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+.pay-topup-tag {
+  font-size: var(--fs-xs);
+  opacity: 0.9;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.22);
+}
+.pay-topup-arrow { opacity: 0.75; }

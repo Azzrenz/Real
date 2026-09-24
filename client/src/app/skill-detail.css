@@ -1,0 +1,41 @@
+/* Skill detail window (second webview). Chrome reuses .titlebar from shell.css;
+   only the parts unique to this window live here. */
+.skill-win {
+  display: flex; flex-direction: column;
+  height: 100vh; overflow: hidden;
+  background: var(--bg);
+}
+.skill-win-id {
+  display: flex; align-items: center; gap: 8px;
+  min-width: 0; padding-right: 12px;
+}
+.skill-win-name {
+  font-size: var(--fs-sm); font-weight: var(--fw-semibold); color: var(--text);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.skill-win-body {
+  flex: 1; min-height: 0; overflow-y: auto;
+  padding: 26px 32px 48px;
+  scrollbar-width: thin;
+}
+.skill-win-desc,
+.skill-win-doc,
+.skill-win-msg { max-width: 760px; margin-left: auto; margin-right: auto; }
+.skill-win-desc {
+  margin-top: 0; margin-bottom: 18px; padding-bottom: 14px;
+  border-bottom: 0.5px solid var(--border-soft);
+  font-size: var(--fs-sm); line-height: 1.75; letter-spacing: 0.015em;
+  color: color-mix(in srgb, var(--muted) 90%, transparent);
+}
+.skill-win-msg {
+  margin-top: 8px;
+  font-size: var(--fs-sm); line-height: 1.7;
+  color: var(--muted);
+}
+/* The document reads at body size here, not at narration size -- there is room. */
+.skill-win-doc { font-size: var(--fs-base); line-height: 2; letter-spacing: 0.05em; color: var(--text-2); }
+.skill-win-doc h1 { margin-bottom: 18px; }
+.skill-win-doc h2 {
+  margin-top: 30px; padding-top: 14px;
+  border-top: 0.5px solid var(--border-soft);
+}

@@ -1,0 +1,7 @@
+# 有意偏离白名单：每行一个选择器（条件块写 "条件 >> 选择器"），# 后为理由
+.think-row .flow-row-title        # 跨文件同名合并：统一取后写值 --muted
+.answer-act.on.bad                # 去掉硬编码 fallback（原来的 var(--danger, #dc2626)）
+.model-dot.glm                    # 硬编码 #6c8cff → token var(--glm)
+.run-status.ok                    # 硬编码色 → token --ok-strong/--ok-soft
+.act-ok-badge                     # 同上
+.answer-act                       # 同选择器两段规则合并为一段（属性并集）

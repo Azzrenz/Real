@@ -1,0 +1,77 @@
+
+/* ============================================================
+   Base
+   ============================================================ */
+* { box-sizing: border-box; }
+html, body, #root { height: 100%; margin: 0; }
+
+body {
+  font-family: var(--font-sans);
+  background: var(--bg);
+  color: var(--text);
+  font-size: var(--fs-base);
+  line-height: var(--lh-copy);
+  letter-spacing: var(--ls-body);
+  text-rendering: optimizeLegibility;
+  transition: background-color var(--t-slow) ease, color var(--t-slow) ease;
+}
+
+button { font-family: inherit; }
+code, .mono { font-family: var(--font-mono); }
+
+*::-webkit-scrollbar { width: 6px; height: 6px; }
+*::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.16); border-radius: 3px; }
+*::-webkit-scrollbar-track { background: transparent; }
+
+:focus-visible {
+  outline: 2px solid var(--real);
+  outline-offset: 1px;
+  border-radius: 4px;
+}
+
+
+.btn {
+  border: none; border-radius: 8px; padding: 7px 16px;
+  font: inherit; font-weight: var(--fw-medium); cursor: pointer;
+  display: inline-flex; align-items: center; gap: 6px;
+  transition: background var(--t-fast), opacity var(--t-fast), transform 80ms ease;
+}
+.btn:active { transform: scale(0.97); }
+.btn.primary { background: var(--btn-primary-bg); color: var(--btn-primary-text); }
+.btn.primary:hover:not(:disabled) { background: var(--btn-primary-hover); }
+.btn.ghost {
+  background: transparent;
+  border: 1px solid var(--border-strong);
+  color: var(--text-2);
+}
+.btn.ghost:hover:not(:disabled) { background: var(--hover-soft); color: var(--text); }
+.btn.danger { background: var(--danger-soft); color: var(--danger); }
+.btn.sm { padding: var(--sp-1) 10px; font-size: var(--fs-xs); }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.btn.primary.is-running { animation: btn-running-pulse 1.4s ease-in-out infinite; }
+@keyframes btn-running-pulse {
+  0%, 100% { filter: brightness(1); }
+  50% { filter: brightness(1.14); }
+}
+
+.icon-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 32px; height: 32px; border-radius: 6px;
+  border: none; background: transparent; color: var(--muted);
+  cursor: pointer; transition: color var(--t-fast);
+}
+.icon-btn svg { display: block; }
+.icon-btn:hover { color: var(--text); }
+.icon-btn.danger:hover { color: var(--danger); }
+
+.sidebar-foot .icon-btn {
+  width: 40px;
+  height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.sidebar-foot .icon-btn svg {
+  width: 21px;
+  height: 21px;
+}

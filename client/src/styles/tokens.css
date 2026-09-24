@@ -1,0 +1,288 @@
+/* ═══════════════════════════════════════════════════════════════════
+   Real — design system v6, "fire in the hearth".
+   ─────────────────────────────────────────────────────────────────────
+   Principles:
+   1. Colour: neutral WeChat-style greys plus a 10-step amber tonal "light" system — the UI
+      stays quiet at rest and lights up whenever the agent works (running pulse, streaming
+      caret, focus ring, progress highlight).
+   2. Type: three families with a converged scale; geometric sans for the brand (wide
+      tracking), Windows-first CJK stack for body text.
+   3. Window-in-window: six overlay kinds (thinking / tools / code / context menu / confirm /
+      settings) share one language — three radii, three shadows, one window-header spec.
+   4. No rule lines: hierarchy comes from grey levels and whitespace.
+   5. Components are independent: one variable group each, tunable on its own.
+   6. Motion: spring and standard curves at 120/200/300ms; row hover never uses a background,
+      only heavier text plus a darker colour.
+   ═══════════════════════════════════════════════════════════════════ */
+
+:root,
+:root[data-theme='dark'] {
+  /* Latin and CJK are tuned separately by ordering, not by any language-aware property:
+     a Latin-only face first means Latin runs use it while CJK glyphs -- which it does not
+     contain -- fall through to the CJK face behind it. Roboto is Google's screen-first sans,
+     even in stroke and neutral in tone; MiSans takes everything CJK. Both installed, both free. */
+  --font-sans: 'Roboto', 'MiSans', 'HarmonyOS Sans SC', 'Segoe UI Variable Text', 'Segoe UI',
+    'PingFang SC', 'Microsoft YaHei UI', 'Microsoft YaHei', sans-serif;
+  --font-display: 'Roboto', 'MiSans', 'HarmonyOS Sans SC', 'PingFang SC',
+    'Microsoft YaHei UI', 'Microsoft YaHei', sans-serif;
+  --font-mono: 'JetBrains Mono', 'Cascadia Code', 'Cascadia Mono', Consolas,
+    ui-monospace, 'SFMono-Regular', Menlo, monospace;
+
+  --fs-3xl: 30px;
+  --fs-2xl: 26px;
+  --fs-xl: 22px;     /* prose h1 */
+  --fs-lg: 18px;
+  --fs-md: 16px;
+  --fs-base: 15px;
+  --fs-think: 16px;
+  --fs-sm: 13px;
+  --fs-xs: 11px;
+  --fs-micro: 10px;
+
+  /* Standard steps only. Inter is a variable font and Windows renders a non-integer weight
+     like 450 by rounding or synthesising it, which is what made the Latin look smudged.
+     Two levels are kept on purpose: bold titles over regular body carry the hierarchy. */
+  --fw-regular: 400;
+  --fw-book: 400;
+  --fw-medium: 500;
+  --fw-semibold: 600;
+  --fw-bold: 700;
+
+  --lh-title: 1.35;
+  --lh-body: 1.9;
+  --lh-copy: 1.7;
+  --lh-code: 1.6;
+  --lh-dense: 1.4;
+
+  /* CJK glyphs are fixed-width squares: with zero tracking the text sets solid and reads
+     cramped. A little tracking is what gives it room to breathe. */
+  --ls-body: 0.03em;
+  /* Titles and reply headings go the other way: at these sizes the body's tracking reads loose,
+     which is why they are pulled a hair tighter than the text under them. */
+  --ls-title: -0.01em;
+  --ls-label: 0.03em;
+  --ls-wide: 0.08em;
+  --ls-brand: 0.16em;
+  --ls-mono: 0;
+
+  --text: #f2f2f2;
+  --text-2: #bdbdbd;
+  --text-2b: #d2d2d2;
+  --muted: #9e9e9e;
+  --faint: #8d8d8d;  /* meta */
+
+  --code-bg: #1b2220;
+  --think-code-bg: #242b29;
+  --code-fg: #9a9a9a;
+  --glm: #6c8cff;   /* GLM 模型标识点（暗色） */
+  --file-fg: #7ee787;
+  --en-term: #7fae94;
+  --hl-keyword: #ff7b72;
+  --hl-string: #a5d6ff;
+  --hl-comment: #8b949e;
+  --hl-number: #79c0ff;
+  --hl-func: #d2a8ff;
+  --hl-type: #ffa657;
+
+  --bg: #111816;
+  --panel: #19201e;
+  --panel-2: #242b29;
+  --inset: #1d2422;
+  --inset-2: #242b29;
+  --hover: #2d3432;
+  --hover-soft: rgba(255, 255, 255, 0.045);
+  --bg-elev: #242b29;
+  --sidebar-bg: #232b29;
+  --chat-bg: #1b2821; /* chat panel surface: one step darker than the sidebar */
+
+  --border: rgba(255, 255, 255, 0.06);
+  /* The dock's outer edge. Heavier than --border on purpose: that one separates surfaces inside a
+     window, this one is the window's own silhouette against the desktop. */
+  --dock-border: rgba(255, 255, 255, 0.14);
+  /* Room the dock window leaves around its visible panel for its own CSS shadow, sized so the
+     blur can finish inside it -- a shadow clipped mid-fade ends in a visible hard line.
+     Must match DOCK_SHADOW_PAD in src-tauri/src/lib.rs: the window is sized from that constant and
+     this is the inset the panel sits at inside it. */
+  --dock-pad: 32px;
+  --dock-shadow: rgba(0, 0, 0, 0.42);
+  --scroll-thumb-strong: rgba(255, 255, 255, 0.28);
+  --scroll-thumb-soft: rgba(255, 255, 255, 0.13);
+  --border-soft: rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(255, 255, 255, 0.12);
+  --input-border: rgba(255, 255, 255, 0.18);
+  --input-edge: rgba(184, 147, 99, 0.42);
+
+  --real: #b89363;
+  --real-bright: #caa876;
+  --real-dim: #8a6f4d;
+  --real-soft: rgba(184, 147, 99, 0.12);
+  --diff-del-fg: #e89a9a;
+  --diff-del-bg: rgba(220, 110, 110, 0.12);
+  --diff-add-fg: #8fc9a4;
+  --diff-add-bg: rgba(95, 170, 120, 0.12);
+  --real-softer: rgba(184, 147, 99, 0.07);
+  --real-border: rgba(184, 147, 99, 0.35);
+  --on-real: #201708;
+  --real-glow: 0 0 0 1px var(--real-border), 0 0 12px rgba(184, 147, 99, 0.28),
+    0 0 26px rgba(184, 147, 99, 0.16);
+  --real-ring: 0 0 0 3px var(--real-soft);
+
+  --ok: #4fbf78;
+  --ok-soft: rgba(79, 191, 120, 0.14);
+  --ok-strong: #6fcf95;
+  --danger: #f0706f;
+  --danger-soft: rgba(240, 112, 111, 0.14);
+  --danger-strong: #f08887;
+  --warn: #b89363;
+  --warn-soft: rgba(217, 154, 85, 0.14);
+
+  --btn-primary-bg: var(--real);
+  --btn-primary-text: var(--on-real);
+  --btn-primary-hover: var(--real-bright);
+  --btn-neutral-bg: #2e2e2e;
+  --btn-neutral-text: #f2f2f2;
+  --btn-neutral-hover: #3a3a3a;
+  --bubble-user-bg: #2e2e2e;
+  --bubble-user-text: #f5f5f5;
+
+  --radius: 10px;
+  --radius-lg: 12px;
+  --radius-xl: 14px;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4), 0 2px 8px rgba(0, 0, 0, 0.25);
+  --shadow-md: 0 4px 14px rgba(0, 0, 0, 0.45), 0 10px 28px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 12px 40px rgba(0, 0, 0, 0.55), 0 2px 10px rgba(0, 0, 0, 0.3);
+
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 24px;
+  --sp-8: 32px;
+  --sp-10: 40px;
+  --sp-12: 48px;
+
+  --chat-max: 1240px;
+  --chat-min: 920px;
+  --chat-fill: 72%;
+  --sidebar-w: 261px;
+  --chat-gutter: 24px;
+
+  --z-popover: 1000;
+  --z-modal: 1100;
+  --z-toast: 1200;
+
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --ease-emphasized: cubic-bezier(0.2, 0, 0, 1);
+  --t-fast: 120ms;
+  --t-base: 200ms;
+  --t-slow: 300ms;
+
+  color-scheme: dark;
+}
+
+:root[data-theme='light'] {
+  /* Grey text is deepened: Windows ClearType draws subpixel fringes on thin strokes, and the
+     lighter the grey the more visible the red edge becomes. Deepening the greys thickens the
+     strokes just enough to cover those fringes, so keep the steps close. */
+  --text: #000000;
+  --text-2: #1f1f1f;
+  --text-2b: #141414;
+  --muted: #3a3a3a;
+  --faint: #6b6b6b;
+
+  /* Code surfaces sit one step above the panel so a block reads as raised. Neutral (R=G=B):
+     the earlier blue-leaning greys tinted the code and made the Latin look off. */
+  --code-bg: #f0f0f0;
+  --think-code-bg: #f1f1f1;
+  --code-fg: #4a4a4a;
+  --file-fg: #12452b;
+  --en-term: #1d5c39;   /* English terms: deeper and less saturated than before, ~7.2:1 on white */
+
+  /* Syntax highlighting: a closed palette of seven roles. Only the code block uses these, and
+     they are declared here so nothing hard-codes a hex outside tokens.css. */
+  --hl-keyword: #cf222e;
+  --hl-string: #0a3069;
+  --hl-comment: #6e7781;
+  --hl-number: #0550ae;
+  --hl-func: #8250df;
+  --hl-type: #953800;
+
+  /* Neutral surfaces (R=G=B), ordered by depth: the chat panel is the lightest, the sidebar the
+     deepest, and inline-code chips sit below the panel so they read as a distinct layer. */
+  --bg: #fafafa;
+  --panel: #fdfdfd;
+  --panel-2: #f4f4f4;
+  --inset: #f6f6f6;
+  --inset-2: #f0f0f0;
+  --hover: #f0f0f0;
+  --hover-soft: rgba(0, 0, 0, 0.04);
+  --bg-elev: #fdfdfd;
+  --sidebar-bg: #eeeeee;
+  --chat-bg: #fbfbfb;
+
+  --border: rgba(0, 0, 0, 0.06);
+  /* The dock's outer edge. Heavier than --border on purpose: that one separates surfaces inside a
+     window, this one is the window's own silhouette against the desktop. */
+  --dock-border: rgba(0, 0, 0, 0.18);
+  /* Room the dock window leaves around its visible panel for its own CSS shadow, sized so the
+     blur can finish inside it -- a shadow clipped mid-fade ends in a visible hard line.
+     Must match DOCK_SHADOW_PAD in src-tauri/src/lib.rs: the window is sized from that constant and
+     this is the inset the panel sits at inside it. */
+  --dock-pad: 32px;
+  /* Alpha fitted to the main window's system shadow, measured off a screenshot against a flat
+     background: it darkens by ~12% 4px out, ~7% at 10px and ~2.5% at 20px. The dock's shadow has to
+     reproduce that same curve -- an earlier stack of three overlapping shadows hit 19% at 4px, so it
+     read as a heavier, larger halo than the window it sits next to. */
+  --dock-shadow: rgba(0, 0, 0, 0.29);
+  --scroll-thumb-strong: rgba(0, 0, 0, 0.12);
+  --scroll-thumb-soft: rgba(0, 0, 0, 0.10);
+  --border-soft: rgba(0, 0, 0, 0.09);
+  --border-strong: rgba(0, 0, 0, 0.09);
+  --input-border: rgba(0, 0, 0, 0.28);
+  --input-edge: rgba(143, 106, 68, 0.42);
+
+  --real: #8f6a44;
+  --real-bright: #a07c52;
+  --diff-del-fg: #cf6f6a;
+  --diff-del-bg: rgba(220, 110, 110, 0.10);
+  --diff-add-fg: #4f9e78;
+  --diff-add-bg: rgba(95, 170, 120, 0.10);
+  --real-dim: #755636;
+  --real-soft: rgba(0, 0, 0, 0.05);
+  --real-softer: rgba(0, 0, 0, 0.03);
+  --real-border: rgba(0, 0, 0, 0.18);
+  --on-real: #ffffff;
+  --real-glow: 0 0 0 1px var(--real-border), 0 0 10px rgba(143, 106, 68, 0.18);
+  --real-ring: 0 0 0 3px var(--real-soft);
+
+  --ok: #06ad56;
+  --ok-soft: rgba(6, 173, 86, 0.1);
+  --ok-strong: #059246;
+  --danger: #fa5151;
+  --danger-soft: rgba(250, 81, 81, 0.09);
+  --danger-strong: #d93737;
+  --warn: #8f6a44;
+  --warn-soft: rgba(224, 138, 46, 0.1);
+
+  --btn-primary-bg: var(--real);
+  --btn-primary-text: var(--on-real);
+  --btn-primary-hover: var(--real-bright);
+  --btn-neutral-bg: #ececec;
+  --btn-neutral-text: #2a2a2a;
+  --btn-neutral-hover: #e0e0e0;
+  --bubble-user-bg: #ececec;
+  --bubble-user-text: #1a1a1a;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05), 0 2px 8px rgba(0, 0, 0, 0.04);
+  --shadow-md: 0 4px 14px rgba(0, 0, 0, 0.08), 0 10px 28px rgba(0, 0, 0, 0.06);
+  --shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.16), 0 2px 10px rgba(0, 0, 0, 0.06);
+
+  color-scheme: light;
+
+  --scroll-thumb: rgba(0, 0, 0, 0.13);
+}
+:root[data-theme='light'] *::-webkit-scrollbar-thumb { background: var(--scroll-thumb); }
+

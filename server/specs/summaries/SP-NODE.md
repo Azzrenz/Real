@@ -1,0 +1,1 @@
+npm 不加 -g、锁文件决定包管理器、node_modules 排除、scripts 是权威命令

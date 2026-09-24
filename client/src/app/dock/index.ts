@@ -1,0 +1,2 @@
+
+export { DockWindow } from '../DockWindow';

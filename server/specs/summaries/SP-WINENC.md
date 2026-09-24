@@ -1,0 +1,1 @@
+中文乱码设 utf-8、findstr 搜中文静默出错、空格路径引号、bat 纯 ASCII

@@ -1,0 +1,250 @@
+.narration-block.prose p { margin: 0 0 10px; }
+.narration-block.prose ul, .narration-block.prose ol { margin: 10px 0; }
+.narration-block.prose li { margin: 4px 0; line-height: 1.9; }
+.narration-block.prose h1, .narration-block.prose h2, .narration-block.prose h3, .narration-block.prose h4, .narration-block.prose h5, .narration-block.prose h6 {
+  margin: 12px 0 6px;
+}
+.flow-narration .narration-block.prose table { margin: 8px 0; font-size: 0.93em; }
+.prose {
+  font-family: var(--font-sans);
+  font-size: var(--fs-base); line-height: 2;
+  color: var(--text-2);
+  word-break: break-word; overflow-wrap: break-word;
+  font-weight: var(--fw-regular);
+  letter-spacing: 0.05em;
+}
+.prose > *:first-child { margin-top: 0 !important; }
+.prose > *:last-child { margin-bottom: 0 !important; }
+.prose h1, .prose h2, .prose h3, .prose h4, .prose h5, .prose h6 {
+  margin: 26px 0 14px; line-height: 1.3;
+  color: var(--text); font-weight: var(--fw-semibold);
+  /* Set on every level: headings would otherwise inherit the body's roomier tracking, so h1/h2
+     came out tighter than h3..h6 -- the scale you see least is the one that looked wrong. */
+  letter-spacing: var(--ls-title);
+}
+.prose h1 { font-size: var(--fs-xl); }
+.prose h2 { font-size: var(--fs-lg); }
+.prose h3 { font-size: var(--fs-md); }
+.prose h4 { font-size: var(--fs-base); color: var(--text-2b); }
+.prose h5 { font-size: var(--fs-sm); color: var(--text-2b); }
+.prose h6 { font-size: var(--fs-xs); color: var(--muted); }
+.prose p { margin: 0 0 14px; }
+.prose p:last-child { margin-bottom: 0; }
+.prose strong { color: var(--text); font-weight: var(--fw-bold); }
+.prose em { color: var(--text-2b); }
+.prose code {
+  font-family: var(--font-mono);
+  font-size: 0.94em;
+  /* A visible chip: inline code carries semantics, so it must not blend into the sentence. */
+  background: var(--code-bg);
+  border-radius: 4px;
+  padding: 1px 5px;
+  color: var(--text-2b);
+}
+.prose pre {
+  padding: 11px 14px;
+  background: var(--code-bg);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius);
+  margin: 0 0 var(--sp-4);
+  white-space: pre-wrap; word-break: break-word;
+  overflow-x: hidden;
+}
+/* Wrapper + header bar: the language on the left, a copy button on the right. The wrapper owns
+   the surface so the bar sits flush on top of the code instead of floating over it. */
+.code-wrap {
+  margin: 0 0 var(--sp-4);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius);
+  background: var(--code-bg);
+  overflow: hidden;
+}
+.code-wrap pre {
+  margin: 0;
+  border: none; border-radius: 0;
+  background: transparent;
+}
+.code-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 5px 8px 5px 12px;
+  border-bottom: 1px solid var(--border-soft);
+  background: var(--panel-2);
+}
+.code-lang {
+  font-family: var(--font-mono);
+  font-size: var(--fs-micro);
+  letter-spacing: var(--ls-label);
+  text-transform: lowercase;
+  color: var(--faint);
+}
+.code-copy {
+  display: inline-flex; align-items: center; justify-content: center;
+  padding: 4px;
+  border: 1px solid transparent; border-radius: 6px;
+  background: transparent; color: var(--muted);
+  cursor: pointer;
+  transition: background var(--t-fast), color var(--t-fast);
+}
+.code-copy svg { display: block; }
+.code-copy:hover { background: var(--hover-soft); color: var(--text); }
+.code-copy.ok { color: var(--ok); }
+
+/* Syntax highlighting: role -> token. Kept to the handful highlight.js emits most often, so the
+   palette stays closed and every colour still comes from tokens.css. */
+.hljs-keyword, .hljs-selector-tag, .hljs-literal, .hljs-doctag { color: var(--hl-keyword); }
+.hljs-string, .hljs-regexp, .hljs-addition, .hljs-meta .hljs-string { color: var(--hl-string); }
+.hljs-comment, .hljs-quote { color: var(--hl-comment); font-style: italic; }
+.hljs-number, .hljs-symbol, .hljs-bullet, .hljs-meta { color: var(--hl-number); }
+.hljs-function .hljs-title, .hljs-title.function_, .hljs-section, .hljs-selector-id { color: var(--hl-func); }
+.hljs-built_in, .hljs-type, .hljs-class .hljs-title, .hljs-title.class_, .hljs-attr,
+.hljs-attribute, .hljs-variable, .hljs-template-variable, .hljs-params { color: var(--hl-type); }
+.hljs-emphasis { font-style: italic; }
+.hljs-strong { font-weight: var(--fw-bold); }
+
+/* Path references: interactive, but deliberately not styled like a link -- this is a file handle,
+   not a URL, and a dashed underline reads as "openable" without promising navigation. */
+.path-ref {
+  cursor: pointer;
+  border-bottom: 1px dashed color-mix(in srgb, var(--en-term) 45%, transparent);
+  transition: border-color var(--t-fast), color var(--t-fast);
+}
+.path-ref:hover {
+  border-bottom-color: var(--en-term);
+  color: var(--en-term);
+}
+.prose pre.code-block {
+  margin: 0;
+  padding: 10px 14px;
+  background: var(--inset-2); border: 1px solid var(--border-soft); border-radius: var(--radius);
+  overflow-x: hidden;
+  white-space: pre-wrap; word-break: break-word;
+  font-family: var(--font-mono);
+  font-size: 0.9em; line-height: var(--lh-code);
+  color: var(--text-2);
+}
+.prose pre.code-block code {
+  background: none; padding: 0;
+  color: var(--text-2);
+  font-size: 1em; font-weight: var(--fw-regular);
+  line-height: 1.6;
+}
+.prose a {
+  color: var(--real);
+  text-decoration: none;
+  border-bottom: 1px solid var(--real-border);
+  transition: border-color var(--t-fast);
+}
+.prose a:hover { border-bottom-color: var(--real); }
+.prose ul, .prose ol { margin: 12px 0; padding-left: 1.5em; }
+.prose li { margin: 6px 0; line-height: 1.75; }
+.prose li > p { margin: 6px 0; }
+.prose blockquote {
+  margin: 0 0 var(--sp-4);
+  padding: 8px 16px;
+  border-left: 4px solid var(--real-border);
+  background: var(--panel-2);
+  border-radius: 0 var(--radius) var(--radius) 0;
+  color: var(--text-2);
+}
+.prose blockquote p { margin: var(--sp-1) 0; }
+.prose blockquote p:last-child { margin-bottom: 0; }
+.prose hr {
+  height: 1px; border: none;
+  background: var(--border);
+  margin: 20px 0;
+}
+.prose table {
+  border-collapse: collapse; margin: 0 0 var(--sp-4);
+  width: 100%; font-size: 0.93em; line-height: 1.7;
+  table-layout: auto;
+}
+.prose th, .prose td {
+  border: 1px solid var(--border);
+  padding: 9px 12px; text-align: left;
+  overflow-wrap: anywhere; word-break: break-word;
+  vertical-align: top;
+}
+.prose td > p { margin: 0; }
+.prose th {
+  background: var(--panel-2); color: var(--text); font-weight: var(--fw-semibold);
+  border-bottom: 2px solid var(--border-strong, var(--border));
+  white-space: nowrap;
+}
+.prose tr:nth-child(even) td { background: rgba(127, 127, 127, 0.04); }
+.prose tbody tr:hover td { background: rgba(127, 127, 127, 0.09); }
+.prose table.index-col > thead > tr > th:first-child, .prose table.index-col > tbody > tr > td:first-child {
+  text-align: right;
+  color: var(--faint);
+  font-variant-numeric: tabular-nums;
+}
+.flow-narration { margin: 14px 0 4px; padding-left: 0; color: var(--text); font-size: var(--fs-base); line-height: 2; font-weight: var(--fw-book); letter-spacing: 0.05em; white-space: pre-line; word-break: break-word; }
+
+/* Narration has two render paths: plain text (.flow-narration) and markdown
+   (.narration-block.prose). They must read identically - .prose would otherwise pull
+   size/leading/weight to 14.5px / 1.8 / 400, so the same sentence looks different
+   depending on whether it happened to contain a list.
+   Body weight is designed at 450 (--fw-book): dropping to 400 widens the jump to the
+   600 bold and reads as "bolder than intended" right where emphasis was intended. */
+.flow-narration .narration-block.prose {
+  overflow-x: auto;
+  font-size: var(--fs-base);
+  line-height: 2;
+  font-weight: var(--fw-book);
+  letter-spacing: 0.05em;
+}
+/* pre-line belongs to the PLAIN-TEXT path only: there the model's own line breaks are
+   content and must survive. In a container holding marked's HTML the newlines are
+   SOURCE formatting ("</p>\n", "</li>\n") and pre-line turns each of them into a real
+   blank line -- measured at one full line (29px) under every markdown narration.
+   The block structure already carries the meaning, so normal is correct here. */
+.flow-narration .narration-block.prose,
+.flow-narration .narration-md { white-space: normal; }
+
+.narration-md > *:first-child { margin-top: 0; }
+.narration-md > *:last-child { margin-bottom: 0; }
+.narration-md p { margin: 0 0 6px; }
+.narration-md ol, .narration-md ul { margin: 4px 0; padding-left: 1.5em; }
+.narration-md li { margin: 2px 0; }
+.narration-md li::marker { color: var(--muted); }
+.narration-md b, .flow-narration .prose strong, .narration-md strong { font-weight: var(--fw-semibold); color: var(--text); }
+.narration-md code {
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+  padding: 1px 4px; border-radius: 4px;
+  background: var(--inset);
+  color: var(--text-2);
+}
+.narration-md h1, .narration-md h2, .narration-md h3, .narration-md h4, .narration-md h5, .narration-md h6 {
+  margin: 8px 0 4px;
+  font-size: 1em; font-weight: var(--fw-semibold);
+  color: var(--text);
+}
+.narration-md pre {
+  margin: 6px 0; padding: 8px 10px;
+  border-radius: 8px; background: var(--inset);
+  overflow-x: auto;
+  font-family: var(--font-mono); font-size: 0.9em; line-height: 1.6;
+  color: var(--text-2);
+}
+.flow-narration .prose h1, .flow-narration .prose h2, .flow-narration .prose h3, .flow-narration .prose h4, .flow-narration .prose h5, .flow-narration .prose h6 {
+  font-size: 1em;
+  font-weight: var(--fw-semibold);
+  margin: 6px 0 2px;
+}
+.flow-narration .prose b {
+  font-weight: var(--fw-semibold);
+  color: var(--text);
+}
+/* English terms are tinted rather than merely coloured: a medium weight plus the body tracking
+   keeps them legible at this colour, which is dark enough to sit on a light surface. */
+.narration-md .en-term, .flow-narration .prose .en-term {
+  color: var(--en-term, inherit);
+  font-weight: var(--fw-medium);
+  letter-spacing: var(--ls-body);
+}
+
+.answer-block.prose .en-term {
+  color: var(--en-term, inherit);
+  font-weight: var(--fw-medium);
+  letter-spacing: var(--ls-body);
+}

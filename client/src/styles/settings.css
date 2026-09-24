@@ -1,0 +1,781 @@
+
+.settings-overlay {
+  position: fixed; inset: 0; z-index: var(--z-modal);
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(3px);
+  animation: fade-in var(--t-fast) var(--ease-standard);
+}
+.settings-panel {
+  width: 420px; max-width: 92vw; max-height: 84vh;
+  background: var(--bg-elev);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-lg);
+  display: flex; flex-direction: column;
+  overflow: hidden;
+  animation: pop-in var(--t-base) var(--ease-spring);
+}
+.settings-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 22px 12px;
+  border-bottom: 1px solid var(--border-soft);
+}
+.settings-head .sh-title {
+  font-size: var(--fs-lg); font-weight: var(--fw-medium);
+}
+.settings-body {
+  flex: 1; overflow-y: auto; padding: var(--sp-2) 22px var(--sp-6);
+  display: flex; flex-direction: column; gap: var(--sp-8);
+}
+.settings-sec .sec-title {
+  font-size: var(--fs-base); font-weight: var(--fw-semibold); color: var(--text);
+  letter-spacing: 0.2px; margin-bottom: var(--sp-3);
+}
+.theme-options { display: flex; gap: var(--sp-2); }
+.theme-option {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 8px 16px; border-radius: 8px; border: none;
+  background: var(--panel-2); color: var(--text-2);
+  font: inherit; font-size: var(--fs-base); font-weight: var(--fw-medium); cursor: pointer;
+  transition: background var(--t-fast), color var(--t-fast);
+}
+.theme-option:hover { background: var(--hover); }
+.theme-option.active { background: var(--real-soft); color: var(--real); }
+:root[data-theme='light'] .theme-option.active,
+:root[data-theme='light'] .settings-tab.active,
+:root[data-theme='light'] .settings-sec .seg-btn.active { color: var(--text); }
+/* Vertical rhythm for a settings field. Three gaps, all meaningful: block to block
+   (the big one, groups the sections), label to control, control to note. The old values
+   (12 / 4 / 2) squeezed all three together, so nothing read as grouped. */
+.field { display: block; margin-bottom: var(--sp-5); }
+.field-label { display: block; font-size: var(--fs-base); color: var(--text-2); font-weight: var(--fw-medium); margin-bottom: var(--sp-2); }
+.field-note { font-size: var(--fs-base); color: var(--text-2); line-height: var(--lh-body); margin: var(--sp-2) 0 0; }
+/* A note that sits directly in a section (not inside a field) has no field margin below it,
+   so the next field's label butts against it. Give it one. */
+.settings-sec > .field-note { margin-bottom: var(--sp-4); }
+.field.checkbox-field {
+  display: flex; align-items: center; gap: 8px;
+  margin-bottom: var(--sp-2);
+  cursor: pointer;
+}
+.field.checkbox-field input[type='checkbox'] {
+  width: 16px; height: 16px;
+  margin: 0; flex-shrink: 0;
+  accent-color: var(--real);
+  cursor: pointer;
+}
+.field.checkbox-field .field-label {
+  margin-bottom: 0;
+  font-size: var(--fs-sm);
+  color: var(--text);
+}
+.settings-locked { border: 0; margin: 0; padding: 0; min-width: 0; }
+.settings-locked:disabled { opacity: 0.6; }
+.settings-panel [data-tip] { position: relative; }
+.settings-panel .field-label[data-tip] {
+  cursor: help;
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+  text-decoration-color: var(--faint);
+}
+.settings-panel [data-tip]::after {
+  content: attr(data-tip);
+  position: absolute;
+  /* Flush right, level with the input row. The input on these fields is width-capped
+     (rule below) to keep this column free, so the tip never lands on the box the user
+     is typing into. */
+  top: calc(100% + 6px);
+  right: 0;
+  width: max-content;
+  max-width: 380px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+  font-family: inherit;
+  font-size: var(--fs-base);
+  font-weight: var(--fw-regular);
+  line-height: var(--lh-body);
+  text-align: left;
+  white-space: normal;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.16);
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.12s ease 0.05s, visibility 0.12s ease 0.05s;
+  pointer-events: none;
+  z-index: 30;
+}
+.settings-panel [data-tip]:hover::after,
+.settings-panel [data-tip]:focus-visible::after { opacity: 1; visibility: visible; }
+/* Reserve the tip's column. These inputs hold short numbers, so capping the width
+   costs nothing and keeps the hover tip off the box the user is typing into. */
+.settings-panel .field-label[data-tip] ~ .input {
+  max-width: min(44%, calc(100% - 400px));
+}
+/* The whole field is the hover target -- title, number box, note -- while the tip
+   stays anchored under the title. Aiming at a short label to read a long tip is
+   needless precision; :focus-within keeps it reachable by keyboard. */
+.settings-panel .field:hover .field-label[data-tip]::after,
+.settings-panel .field:focus-within .field-label[data-tip]::after { opacity: 1; visibility: visible; }
+.input {
+  width: 100%; padding: 10px 12px;
+  background: var(--panel-2); border: 1px solid var(--border-soft); border-radius: 8px;
+  color: var(--text); font: inherit; font-size: var(--fs-base);
+  outline: none;
+  transition: box-shadow var(--t-fast), border-color var(--t-fast);
+}
+.input:hover { border-color: var(--border-strong); }
+.input:focus { box-shadow: var(--real-ring); }
+.input.mono { font-family: var(--font-mono); font-size: var(--fs-sm); }
+.input.area { resize: vertical; min-height: 64px; line-height: var(--lh-copy); }
+.settings-actions {
+  display: flex; align-items: center; gap: 10px;
+  flex-shrink: 0;
+  padding: var(--sp-3) 22px;
+  border-top: 1px solid var(--border-soft);
+  justify-content: flex-end;
+  position: relative;
+}
+/* Only failures reach this element now: a successful save closes nothing and says nothing,
+   because the controls themselves are the receipt. */
+.save-msg {
+  position: absolute;
+  right: 22px;
+  top: -8px;
+  font-size: var(--fs-sm);
+  color: var(--danger-strong);
+}
+.settings-actions .btn.primary {
+  padding: 9px 24px;
+  font-weight: var(--fw-semibold);
+  font-size: var(--fs-sm);
+  box-shadow: var(--real-glow);
+}
+.save-msg.err {
+  animation: none;
+  opacity: 1;
+  color: var(--danger-strong); }
+.settings-tab:hover { color: var(--text); }
+.settings-tab.active { background: var(--real-soft); color: var(--real); }
+.field-actions { display: flex; gap: var(--sp-2); margin-bottom: var(--sp-2); }
+.btn.ghost.danger { border-color: rgba(217, 55, 55, 0.4); color: var(--danger-strong); }
+.btn.ghost.danger:hover { background: rgba(217, 55, 55, 0.08); }
+.test-result {
+  font-size: var(--fs-sm); padding: var(--sp-2) 10px;
+  border-radius: 8px; margin-bottom: var(--sp-2); line-height: var(--lh-copy);
+}
+.test-result.ok { background: var(--ok-soft); color: var(--ok-strong); }
+.test-result.err { background: var(--danger-soft); color: var(--danger-strong); }
+.test-url { display: block; font-family: var(--font-mono); font-size: var(--fs-xs); opacity: 0.75; color: var(--text-2); }
+
+.settings-sec .seg {
+  display: inline-flex;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  background: var(--panel-2);
+}
+.settings-sec .seg-btn {
+  border: none;
+  background: transparent;
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+  padding: 7px 16px;
+  cursor: pointer;
+  transition: background var(--t-fast), color var(--t-fast);
+}
+.settings-sec .seg-btn + .seg-btn { border-left: 1px solid var(--border); }
+.settings-sec .seg-btn:hover { background: var(--hover); color: var(--text); }
+/* 停用档：保留可见供对照，但不可点——降不透明度即灰度，hover 也不再亮起。 */
+.settings-sec .seg-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.settings-sec .seg-btn:disabled:hover { background: transparent; color: var(--text-2); }
+.settings-sec .seg-btn.active {
+  background: var(--real-soft);
+  color: var(--real);
+  font-weight: var(--fw-medium);
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes pop-in {
+  from { opacity: 0; transform: scale(0.96) translateY(4px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+@keyframes expand-in {
+  from { opacity: 0; transform: translateY(-3px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .status-dot, .boot .boot-flame { animation: none !important; }
+  .boot .boot-hint { animation: none !important; }
+ * { transition-duration: 0.01ms !important; }
+  .ctx-menu, .settings-panel, .msg-user, .main, .settings-overlay { animation: none !important; }
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   ConfirmModal — dangerous-operation confirmation (backend ConfirmGate; danger/warn/info).
+   ═══════════════════════════════════════════════════════════════════ */
+.confirm-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-modal);
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(2px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: fade-in var(--t-fast) var(--ease-standard);
+}
+.confirm-modal {
+  width: min(480px, calc(100vw - 48px));
+  background: var(--panel);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+  animation: pop-in var(--t-base) var(--ease-spring);
+}
+.confirm-banner {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-5);
+  border-bottom: 1px solid var(--border);
+  background: var(--inset);
+}
+.confirm-modal.risk-danger .confirm-banner {
+  background: color-mix(in srgb, var(--danger) 8%, var(--panel));
+}
+.confirm-modal.risk-warn .confirm-banner {
+  background: color-mix(in srgb, var(--warn) 10%, var(--panel));
+}
+.confirm-modal.risk-info .confirm-banner {
+  background: color-mix(in srgb, var(--ok) 8%, var(--panel));
+}
+.confirm-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 11px;
+  border-radius: 999px;
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+  flex-shrink: 0;
+}
+.confirm-badge--danger { background: var(--danger-soft); color: var(--danger-strong, var(--danger)); }
+.confirm-badge--warn { background: var(--warn-soft); color: var(--warn); }
+.confirm-badge--info { background: var(--ok-soft); color: var(--ok-strong, var(--ok)); }
+.confirm-action {
+  font-size: var(--fs-md);
+  font-weight: var(--fw-semibold);
+  color: var(--text);
+}
+.confirm-body { display: grid; gap: var(--sp-3); padding: var(--sp-5) var(--sp-5) 0; }
+.confirm-target-wrap { display: grid; gap: var(--sp-1); }
+.confirm-target-label {
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-semibold);
+  color: var(--faint);
+  letter-spacing: 0.04em;
+}
+.confirm-target {
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  color: var(--text);
+  background: var(--inset);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--text-3, var(--border-strong));
+  border-radius: var(--radius);
+  padding: var(--sp-3) var(--sp-4);
+  word-break: break-all;
+  max-height: 110px;
+  overflow: auto;
+}
+.confirm-modal.risk-danger .confirm-target { border-left-color: var(--danger); }
+.confirm-modal.risk-warn .confirm-target { border-left-color: var(--warn); }
+.confirm-impact {
+  font-size: var(--fs-base);
+  color: var(--text-2);
+  line-height: var(--lh-body);
+}
+.confirm-trust {
+  display: grid;
+  gap: var(--sp-2);
+  margin-top: var(--sp-1);
+  padding: var(--sp-3);
+  background: var(--bg-soft, var(--inset));
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-lg);
+}
+.trust-opt {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  cursor: pointer;
+  user-select: none;
+}
+.trust-opt input {
+  margin-top: 3px;
+  width: 15px;
+  height: 15px;
+  accent-color: var(--accent, var(--real));
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.trust-opt-text {
+  display: flex;
+  flex-direction: column;
+  font-size: var(--fs-sm);
+  color: var(--text);
+  line-height: 1.5;
+}
+.trust-opt-text b { font-weight: var(--fw-semibold); }
+.trust-opt-sub { font-size: var(--fs-xs); color: var(--faint); }
+/* Confirm-rule rows: name + one-line reason on the left, a 3-state choice on the right.
+   Both text levels are --fs-sm and the hierarchy comes from weight + gray (never a size
+   jump), matching the rest of the settings panel. */
+.trust-rows { display: grid; margin: var(--sp-2) 0 var(--sp-3); }
+.trust-row {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: var(--sp-4);
+  padding: var(--sp-2) 0;
+  border-bottom: 0.5px solid var(--border-soft);
+}
+.trust-row:last-child { border-bottom: none; }
+.trust-row-k { display: grid; gap: 2px; min-width: 0; }
+.trust-row-k b { font-size: var(--fs-sm); font-weight: var(--fw-medium); color: var(--text); }
+.trust-row-k em { font-style: normal; font-size: var(--fs-sm); color: var(--text-2); }
+.trust-reset { margin-top: var(--sp-3); }
+.trust-rule-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+}
+.trust-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 6px 4px 11px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--inset);
+  font-size: var(--fs-sm);
+  color: var(--text);
+}
+.trust-chip b { font-weight: var(--fw-semibold); }
+.trust-chip.decision-allow b { color: var(--ok-strong, var(--ok)); }
+.trust-chip.decision-deny b { color: var(--danger-strong, var(--danger)); }
+.trust-chip-x {
+  border: none;
+  background: transparent;
+  color: var(--faint);
+  cursor: pointer;
+  font-size: var(--fs-base);
+  line-height: 1;
+  padding: 2px 5px;
+  border-radius: 4px;
+}
+.trust-chip-x:hover { background: var(--danger-soft); color: var(--danger); }
+.trust-clear {
+  border: 1px dashed var(--border-strong);
+  background: transparent;
+  color: var(--text-2);
+  font-size: var(--fs-xs);
+  padding: 4px 10px;
+  border-radius: 999px;
+  cursor: pointer;
+}
+.trust-clear:hover { color: var(--danger); border-color: var(--danger); }
+.confirm-hint {
+  font-size: var(--fs-xs);
+  color: var(--faint);
+}
+.confirm-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--sp-2);
+  padding: var(--sp-4) var(--sp-5) var(--sp-5);
+}
+.confirm-actions .danger-allow {
+  background: var(--danger);
+  color: #fff;
+}
+.confirm-actions .danger-allow:hover { filter: brightness(1.08); }
+
+.ws-picker { margin-top: var(--sp-4); }
+.ws-picker-candidates {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-3);
+}
+.ws-pick-chip {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  color: var(--text-2);
+  background: var(--bg-soft);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 10px;
+  cursor: pointer;
+  max-width: 340px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ws-pick-chip:hover { border-color: var(--accent); color: var(--accent); }
+.ws-pick-input {
+  width: 100%;
+  box-sizing: border-box;
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 10px;
+}
+.ws-pick-input:focus { outline: none; border-color: var(--accent); }
+
+/* ── Decision gate (ask): the model lays out the fork; the user picks one, or says
+   what they would rather do. Master-detail layout -- the top row states only "which
+   one", the pane below carries the picked option's cost. Stacking them instead pushes
+   the last option off screen once there are four, and the comparison gets buried.
+   Width follows the composer's formula so the dialog scales with the window rather
+   than being pinned to a number that has to be revisited.
+   Hierarchy comes from weight and gray, never from a size jump: option label, detail
+   and note all read at --fs-base. Only two sizes appear here (--fs-base / --fs-sm) so
+   the modal reads as one type scale with the rest of the app. Brand color, not a
+   status color: a decision is not a warning. */
+.confirm-modal.is-ask { width: min(clamp(800px, 66vw, 1100px), calc(100vw - 48px)); }
+.confirm-modal.is-ask .confirm-banner { background: color-mix(in srgb, var(--real) 8%, var(--panel)); }
+.confirm-modal.is-ask .confirm-badge { background: var(--real-soft); color: var(--real); }
+.confirm-modal.is-ask .confirm-action { white-space: normal; line-height: 1.5; }
+.ask-gate { display: grid; gap: var(--sp-3); }
+
+/* Top row: labels only. */
+.ask-tabs { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+.ask-tab {
+  display: inline-flex; align-items: center; gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  background: var(--panel-2);
+  color: var(--text); font: inherit;
+  cursor: pointer;
+  transition: background var(--t-fast), border-color var(--t-fast);
+}
+.ask-tab:hover { background: var(--hover-soft); }
+/* A real brand tint rather than var(--real-soft): that token is amber in the dark
+   theme but a neutral black wash in the light one, so a selected tab would read as
+   "greyed out" instead of "chosen". */
+.ask-tab.is-on {
+  border-color: var(--real);
+  background: color-mix(in srgb, var(--real) 10%, var(--panel));
+}
+.ask-tab-idx {
+  flex: none; width: 22px; height: 22px;
+  display: grid; place-items: center;
+  border-radius: 999px;
+  background: var(--hover-soft); color: var(--muted);
+  font-size: var(--fs-sm); font-weight: var(--fw-medium);
+}
+.ask-tab.is-on .ask-tab-idx { background: var(--real); color: var(--panel); }
+.ask-tab-label { font-size: var(--fs-base); font-weight: var(--fw-medium); color: var(--text); }
+.ask-tab-rec {
+  flex: none; padding: 1px 7px; border-radius: 999px;
+  background: color-mix(in srgb, var(--real) 16%, transparent);
+  color: var(--real);
+  font-size: var(--fs-sm); font-weight: var(--fw-medium);
+}
+
+/* Bottom pane: the picked option's cost. Min-height holds two lines so the modal does
+   not jump as you move between options of different lengths. */
+.ask-pane {
+  min-height: calc(var(--fs-base) * 1.7 * 2 + var(--sp-3) * 2);
+  padding: var(--sp-3) var(--sp-4);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-lg);
+  background: var(--panel-2);
+}
+.ask-pane-detail { margin: 0; font-size: var(--fs-base); line-height: 1.9; color: var(--text-2); }
+.ask-pane-idle { color: var(--faint); }
+
+/* The user's own line: a third answer, not a footnote to the options. */
+.ask-note-wrap { display: grid; gap: var(--sp-2); }
+.ask-note-label { font-size: var(--fs-base); font-weight: var(--fw-medium); color: var(--text); }
+.ask-note {
+  width: 100%; box-sizing: border-box; resize: vertical;
+  min-height: calc(var(--fs-base) * 1.6 * 2 + var(--sp-2) * 2);
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  background: var(--panel); color: var(--text);
+  font: inherit; font-size: var(--fs-base); line-height: 1.6;
+}
+.ask-note::placeholder { color: var(--faint); }
+.ask-note:focus { outline: none; border-color: var(--real); }
+/* This dialog carries a decision, so nothing inside it drops to the utility sizes:
+   the hint reads at --fs-sm and the actions use full-size buttons (.btn without .sm,
+   which would be 11px next to 15px option text). */
+.confirm-modal.is-ask .confirm-hint { font-size: var(--fs-sm); }
+
+
+.toast-stack {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: var(--z-toast);
+  display: grid;
+  gap: var(--sp-2);
+  max-width: min(380px, calc(100vw - 40px));
+}
+.toast {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-2);
+  background: var(--panel-2, var(--panel));
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+  padding: var(--sp-3) var(--sp-4);
+  font-size: var(--fs-sm);
+  color: var(--text);
+  animation: toast-in var(--t-base) var(--ease-spring);
+}
+.toast--error { border-left: 3px solid var(--danger); }
+.toast--ok { border-left: 3px solid var(--ok); }
+.toast--info { border-left: 3px solid var(--real); }
+.toast--error .toast-icon { color: var(--danger); }
+.toast--ok .toast-icon { color: var(--ok); }
+.toast--info .toast-icon { color: var(--real); }
+.toast-text {
+  flex: 1;
+  line-height: var(--lh-copy);
+  word-break: break-word;
+}
+.toast-close {
+  flex: none;
+  background: none;
+  border: none;
+  color: var(--faint);
+  cursor: pointer;
+  padding: 2px;
+  border-radius: 4px;
+}
+.toast-close:hover { color: var(--text-2); }
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.settings-panel--wide {
+  width: 960px;
+  max-width: 94vw;
+  height: min(900px, 92vh);
+  max-height: 92vh;
+  flex-direction: row;
+  align-items: stretch;
+}
+.settings-nav {
+  width: 208px;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--sp-4) var(--sp-3);
+  background: var(--inset);
+  border-right: 1px solid var(--border-soft);
+  overflow-y: auto;
+}
+.settings-nav-title {
+  font-family: var(--font-display);
+  font-size: var(--fs-lg);
+  font-weight: var(--fw-semibold);
+  letter-spacing: 0.4px;
+  color: var(--text);
+  padding: var(--sp-1) var(--sp-3) var(--sp-4);
+}
+.settings-nav-item {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-3) var(--sp-3) var(--sp-3) calc(var(--sp-3) - 3px);
+  border: none;
+  border-left: 3px solid transparent;
+  background: none;
+  border-radius: var(--radius);
+  color: var(--text-2);
+  font: inherit;
+  font-size: var(--fs-base);
+  font-weight: var(--fw-medium);
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--t-fast) var(--ease-standard), color var(--t-fast) var(--ease-standard), border-color var(--t-fast) var(--ease-standard);
+}
+.settings-nav-item:hover { background: var(--hover-soft); color: var(--text); }
+.settings-nav-item.active {
+  background: var(--real-soft);
+  color: var(--real);
+  border-left-color: var(--real);
+  font-weight: var(--fw-semibold);
+}
+:root[data-theme='light'] .settings-nav-item.active { color: var(--text); }
+.settings-nav-label { flex: 1; }
+.settings-nav-foot {
+  margin-top: auto;
+  padding: var(--sp-3);
+  font-size: var(--fs-xs);
+  color: var(--text-2);
+}
+.settings-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.about-rows { display: grid; gap: var(--sp-1); }
+.about-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-4);
+  padding: var(--sp-2) 0;
+  border-bottom: 1px dashed var(--border-soft);
+  font-size: var(--fs-base);
+}
+.about-k { color: var(--text-2); flex: none; }
+.about-v { color: var(--text); text-align: right; word-break: break-all; }
+.about-v.mono { font-family: var(--font-mono); font-size: var(--fs-sm); }
+
+.mem-table {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: var(--sp-2) 0;
+  max-height: 320px;
+  overflow-y: auto;
+}
+.mem-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  border: 1px solid var(--line-1, var(--line, #ddd));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--panel, #fff) 60%, transparent);
+}
+.mem-value {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-base);
+  color: var(--text);
+}
+.mem-pill {
+  flex: none;
+  font-size: var(--fs-xs, 11px);
+  color: var(--text-2);
+  border: 1px solid var(--line-1, var(--line, #ddd));
+  border-radius: 999px;
+  padding: 1px 8px;
+  white-space: nowrap;
+}
+.mem-pill.perm {
+  color: var(--real);
+  border-color: var(--real);
+  font-weight: var(--fw-semibold);
+}
+.mem-act {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: var(--text-2);
+  border-radius: 6px;
+  transition: color var(--t-fast, 0.12s);
+}
+.mem-act:hover { color: var(--text); }
+
+.copy-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+}
+
+.sch-row {
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+.sch-row:last-child { border-bottom: none; }
+.sch-main { flex: 1 1 auto; min-width: 0; }
+.sch-name {
+  font-size: var(--fs-base); font-weight: var(--fw-medium);
+  color: var(--text);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.sch-meta {
+  margin-top: 3px;
+  font-size: var(--fs-xs); color: var(--faint);
+}
+.sch-meta code {
+  font-family: var(--font-mono);
+  padding: 1px 4px; border-radius: 4px;
+  background: var(--hover-soft);
+}
+.sch-status { color: var(--muted); }
+.sch-status.bad { color: var(--danger); }
+.sch-result {
+  margin-top: 4px;
+  font-size: var(--fs-xs); color: var(--muted);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.sch-acts { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+.sch-pill {
+  padding: 3px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--faint);
+  font: inherit; font-size: var(--fs-xs);
+  cursor: pointer;
+  transition: color var(--t-fast), border-color var(--t-fast);
+}
+.sch-pill.on { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 40%, transparent); }
+.sch-pill:hover { color: var(--text); }
+.sch-error { color: var(--danger) !important; }
+
+.chat-restore {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  padding: 24px 0;
+  color: var(--faint);
+  font-size: var(--fs-sm);
+}
+.chat-restore-icon { animation: dt-spin 1.4s linear infinite; }
+@keyframes dt-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .chat-restore-icon { animation: none; }
+}

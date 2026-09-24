@@ -1,0 +1,74 @@
+[package]
+name = "real-server"
+version = "0.1.0"
+edition = "2021"
+description = "Real Agent 后端：确定性收敛循环（锚定→薄任务板→执行→证据→收敛）· MCP 工具契约 · DeepSeek Responses API"
+license = "MIT"
+
+[[bin]]
+name = "real-server"
+path = "src/main.rs"
+
+[dependencies]
+# HTTP 服务
+axum = "0.8"
+tower-http = { version = "0.6", features = ["cors", "trace"] }
+http = "1"
+
+# 异步运行时
+tokio = { version = "1", features = ["full"] }
+tokio-util = "0.7"
+futures-util = "0.3"
+async-stream = "0.3"
+async-trait = "0.1"
+
+# 序列化
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# 数据库（SQLite）
+sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite", "migrate"] }
+
+# LLM 调用
+reqwest = { version = "0.12", features = ["json", "stream", "gzip", "brotli", "deflate"] }
+
+# MCP SDK 的 Streamable HTTP 客户端基于 reqwest 0.13（与 SDK 同版本方能拿到
+# StreamableHttpClient 实现）。主 HTTP 栈仍是 0.12（LLM 调用），此处仅取 Client 类型。
+reqwest013 = { package = "reqwest", version = "0.13", default-features = false }
+# 只开客户端与双传输（stdio 子进程 + Streamable HTTP）；不开 server/macros 默认特性
+rmcp = { version = "3.2", default-features = false, features = [
+    "client",
+    "transport-child-process",
+    "transport-streamable-http-client-reqwest",
+    # HTTP 后端需显式选 TLS 实现（否则 reqwest 客户端实现不参与编译）。
+    # 选平台原生 TLS（Windows SChannel / macOS SecureTransport）：
+    # rustls 路线会拉 aws-lc-rs，当前镜像源无对应版本。
+    "reqwest-native-tls",
+] }
+
+# 工具
+uuid = { version = "1", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+thiserror = "2"
+zip = "2"
+quick-xml = "0.36"
+lopdf = "0.33"
+filetime = "0.2"
+
+# 可观测性
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# 配置
+dotenvy = "0.15"
+regex = "1.13.1"
+
+# 编码（2026-08-26：cmd 在中文 Windows 输出 GBK，需转 UTF-8 供模型读失败原文）
+encoding_rs = "0.8"
+image = { version = "0.25.10", default-features = false, features = ["png", "jpeg"] }
+
+[profile.dev]
+opt-level = 1
+
+[profile.release]
+lto = true

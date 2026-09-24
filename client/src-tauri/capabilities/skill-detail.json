@@ -1,0 +1,13 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "skill-detail",
+  "description": "技能详情独立窗口：自绘标题栏（拖拽 / 最小化 / 最大化 / 关闭）",
+  "windows": ["skill-detail-*"],
+  "permissions": [
+    "core:default",
+    "core:window:allow-start-dragging",
+    "core:window:allow-minimize",
+    "core:window:allow-toggle-maximize",
+    "core:window:allow-close"
+  ]
+}

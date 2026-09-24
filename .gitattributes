@@ -1,0 +1,66 @@
+# 行尾与二进制处理
+# 建立时间：2026-09-11 08:50（中国时区 UTC+8）· 仓库重建时新写
+#
+# 为什么必须有这个文件：
+#   Windows 上 git 默认会对文本做 CRLF↔LF 转换，一旦转换落到二进制文件上，
+#   检出时文件就被改坏（图标/字体/pdf 不可逆损坏）。所以这里做两件事：
+#     ① 文本统一 LF 入库（跨平台一致，diff 不因行尾噪声刷屏）
+#     ② 二进制显式标记，git 对它零转换
+#
+# 特别例外：批处理与 PowerShell 脚本锁 CRLF
+#   .bat 用 LF 行尾在 cmd.exe 下会出怪问题（标签跳转、括号块），必须 CRLF。
+#   这一条别删。
+
+# 默认：自动判定文本，入库统一 LF
+* text=auto eol=lf
+
+# ── 脚本必须 CRLF（Windows 执行器兼容性，勿改） ──
+*.bat  text eol=crlf
+*.cmd  text eol=crlf
+*.ps1  text eol=crlf
+
+# ── 二进制：不做行尾转换、不做文本 diff ──
+*.pdf    binary
+*.doc    binary
+*.docx   binary
+*.xls    binary
+*.xlsx   binary
+*.ppt    binary
+*.pptx   binary
+
+*.png    binary
+*.jpg    binary
+*.jpeg   binary
+*.gif    binary
+*.webp   binary
+*.bmp    binary
+*.ico    binary
+*.icns   binary
+*.tiff   binary
+
+*.woff   binary
+*.woff2  binary
+*.ttf    binary
+*.otf    binary
+*.eot    binary
+
+*.exe    binary
+*.dll    binary
+*.so     binary
+*.dylib  binary
+*.node   binary
+*.wasm   binary
+
+*.db     binary
+*.sqlite binary
+*.sqlite3 binary
+
+*.zip    binary
+*.gz     binary
+*.tar    binary
+*.7z     binary
+*.bundle binary
+
+# ── 语言统计：生成物不计入语言占比 ──
+Cargo.lock        linguist-generated
+package-lock.json linguist-generated

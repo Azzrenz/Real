@@ -1,0 +1,53 @@
+
+.evo-card {
+  margin: 8px 0;
+  padding: 10px 12px;
+  border-radius: var(--radius-lg);
+  background: var(--inset);
+  border: 1px solid var(--border-soft);
+}
+.evo-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.evo-head-title { font-size: var(--fs-sm); font-weight: var(--fw-semibold); color: var(--text-2); }
+.evo-badge {
+  margin-left: auto;
+  padding: 0 6px; border-radius: 4px;
+  font-size: var(--fs-xs); line-height: 16px;
+  color: var(--muted);
+  background: color-mix(in srgb, var(--real) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--real) 20%, transparent);
+}
+.evo-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px; }
+.evo-type {
+  flex: none; padding: 0 5px; border-radius: 4px;
+  font-size: var(--fs-xs); line-height: 16px; font-weight: var(--fw-medium);
+}
+.evo-type.is-skill { color: var(--real-bright); background: color-mix(in srgb, var(--real) 14%, transparent); }
+.evo-type.is-memory { color: var(--muted); background: color-mix(in srgb, var(--muted) 16%, transparent); }
+.evo-cat {
+  flex: none; padding: 0 5px; border-radius: 4px;
+  font-size: var(--fs-xs); line-height: 16px; font-weight: var(--fw-medium); letter-spacing: 0.02em;
+  color: var(--muted);
+  background: color-mix(in srgb, var(--real) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--real) 20%, transparent);
+}
+
+.evo-item { padding: 10px 0 12px; line-height: 1.75; border-top: 1px solid var(--border-soft); }
+.evo-item:first-child { border-top: none; }
+.evo-title-row { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+.evo-name { font-weight: var(--fw-semibold); color: var(--text); }
+.evo-cat-row { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; font-size: var(--fs-sm); }
+.evo-cat-none { color: var(--faint); }
+.evo-merge { color: var(--real); }
+.evo-sum { margin: 0 0 6px; color: var(--text-2); }
+.evo-evidence { margin: 0 0 8px; color: var(--text-2); }
+.evo-actions { display: flex; align-items: center; gap: 10px; }
+.evo-absorb-btn {
+  padding: 5px 14px; border-radius: 6px; cursor: pointer;
+  border: 1px solid color-mix(in srgb, var(--real) 40%, transparent);
+  background: color-mix(in srgb, var(--real) 12%, transparent);
+  color: var(--real); font-weight: var(--fw-medium); font-size: var(--fs-sm);
+}
+.evo-absorb-btn:hover { background: color-mix(in srgb, var(--real) 20%, transparent); }
+.evo-absorb-btn:disabled { opacity: 0.6; cursor: default; }
+.evo-done { color: var(--ok-strong); font-size: var(--fs-sm); }
+.evo-err { color: var(--danger-strong); font-size: var(--fs-sm); }

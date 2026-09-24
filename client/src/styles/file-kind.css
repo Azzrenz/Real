@@ -1,0 +1,38 @@
+
+
+.file-dot {
+  flex-shrink: 0;
+  width: 5px;
+  height: 5px;
+  margin: 0 2px;
+  border-radius: 50%;
+  background: var(--faint);
+}
+.file-dot[data-ext='ts'],
+.file-dot[data-ext='tsx'],
+.file-dot[data-ext='js'],
+.file-dot[data-ext='jsx'],
+.file-dot[data-ext='py'] {
+  background: var(--hl-func);
+}
+.file-dot[data-ext='rs'] { background: var(--hl-type); }
+.file-dot[data-ext='css'],
+.file-dot[data-ext='scss'],
+.file-dot[data-ext='less'] {
+  background: var(--hl-keyword);
+}
+.file-dot[data-ext='html'],
+.file-dot[data-ext='htm'],
+.file-dot[data-ext='xml'] {
+  background: var(--hl-string);
+}
+.file-dot[data-ext='json'],
+.file-dot[data-ext='toml'],
+.file-dot[data-ext='yaml'],
+.file-dot[data-ext='yml'] {
+  background: var(--hl-number);
+}
+.file-dot[data-ext='md'],
+.file-dot[data-ext='markdown'] { background: var(--hl-comment); }
+.file-dot[data-ext='sh'],
+.file-dot[data-ext='bash'] { background: var(--ok); }
