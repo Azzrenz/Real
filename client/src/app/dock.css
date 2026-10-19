@@ -272,6 +272,18 @@
 .dock-tab:hover { background: var(--hover-soft); color: var(--text); }
 .dock-tab.on { background: var(--panel); color: var(--text); font-weight: var(--fw-semibold); }
 
+/* 进度徽标：常态下「进度」这件事在侧栏只占一个字符 —— 有活在跑就报百分比，
+   刚干完就挂个勾。要看细节再点进去，这是「进度不该常占页面」的落点。 */
+.dock-tab-badge {
+  margin-top: -1px;
+  font-family: var(--font-mono); font-size: var(--fs-xs); line-height: 1;
+  padding: 2px 4px; border-radius: 7px;
+  color: var(--accent, #4c8dff);
+  background: var(--hover-soft);
+}
+.dock-tab-badge.is-done { color: var(--ok, #06ad56); }
+.dock-rail.is-closed .dock-tab-badge { display: none; }
+
 /* Collapsed: the labels go, the icons stay. A 28px strip of icons still tells you where you are
    and still switches tabs in one click, which a strip holding only the toggle cannot do. */
 .dock-rail.is-closed { width: 36px; padding: 8px 4px; }
@@ -373,6 +385,25 @@
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .art-sub { font-size: var(--fs-micro); color: var(--faint); }
+/* How long ago this landed. Pushed to the right edge so the column of names stays flush left. */
+.art-ago {
+  flex: none; margin-left: auto; padding-left: 6px;
+  font-size: var(--fs-micro); color: var(--faint);
+  font-variant-numeric: tabular-nums;
+}
+/* 消退：越旧、越已被看过的产物越退到背景里。六个小时以上算“已定稿”，默认折进一行；
+   点开过的条目降一档对比度，不和刚出炉的抢眼睛。 */
+.art-row--cold { opacity: .55; }
+.art-row--cold:hover { opacity: 1; }
+.art-row--seen .art-name { color: var(--muted); }
+.art-more {
+  display: block; width: 100%; padding: 4px 4px;
+  border: none; border-radius: 6px;
+  background: transparent; color: var(--muted);
+  font-family: var(--font-sans); font-size: var(--fs-micro);
+  text-align: left; cursor: pointer;
+}
+.art-more:hover { background: var(--hover-soft); color: var(--text); }
 
 .kv { margin: 0 0 4px; }
 .kv-row {
@@ -473,3 +504,196 @@
 }
 .files-sum-stat { font-size: var(--fs-micro); color: var(--faint); }
 .files-tree { flex: 1; min-height: 0; overflow: auto; padding: 6px 6px 12px; }
+
+/* 「进度」页：一条总进度 + 每项一条细进度 + 进程小字。
+   颜色只取 tokens.css 里的变量，跟别的面板同一套观感。 */
+.prog-stamp { margin-left: auto; font-size: var(--fs-base); color: var(--muted); }
+.prog-stamp.stale { color: var(--warn, #c9a227); }
+
+.prog-total { display: flex; align-items: baseline; justify-content: space-between; margin: 8px 0 6px; }
+.prog-total-text { font-size: var(--fs-base); color: var(--text); }
+.prog-total-pct { font-family: var(--font-mono); font-size: var(--fs-base); color: var(--text-2); }
+
+.prog-bar { height: 6px; border-radius: 3px; background: var(--hover-soft); overflow: hidden; }
+.prog-bar.thin { height: 3px; border-radius: 2px; margin: 4px 0; }
+.prog-bar-fill { display: block; height: 100%; background: var(--accent, #4c8dff); transition: width 0.3s ease; }
+
+.prog-list { list-style: none; margin: 10px 0 0; padding: 0; }
+.prog-row { padding: 7px 0; border-top: 1px solid var(--border-soft); }
+.prog-row-top { display: flex; align-items: center; gap: 6px; }
+.prog-tag { font-family: var(--font-mono); font-size: var(--fs-base); color: var(--text-2); }
+.prog-state { margin-left: auto; font-size: var(--fs-base); padding: 1px 7px; border-radius: 8px; background: var(--hover-soft); color: var(--muted); }
+.prog-state.s-done { color: var(--ok, #3fa96a); }
+.prog-state.s-burning,
+.prog-state.s-cutting { color: var(--accent, #4c8dff); }
+.prog-row-bot { display: flex; align-items: baseline; gap: 8px; }
+.prog-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-base); color: var(--text); }
+.prog-count { flex: none; font-family: var(--font-mono); font-size: var(--fs-base); color: var(--muted); }
+
+.prog-procs { list-style: none; margin: 6px 0 0; padding: 0; }
+.prog-proc { display: flex; align-items: baseline; gap: 8px; padding: 3px 0; font-size: var(--fs-base); }
+.prog-proc-name { font-family: var(--font-mono); color: var(--text-2); }
+.prog-proc-num { font-family: var(--font-mono); color: var(--muted); }
+.prog-proc-what { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
+
+.prog-hint { display: block; margin: 4px 0 10px; padding: 7px 9px; border-radius: 4px; background: var(--hover-soft); font-family: var(--font-mono); font-size: var(--fs-base); color: var(--muted); word-break: break-all; }
+
+/* 进度快照的路径输入：默认藏在 placeholder 里，改过的存本地，下次还认。 */
+.prog-path { width: 100%; box-sizing: border-box; margin: 0 0 8px; padding: 5px 7px; border: 1px solid var(--border-soft); border-radius: 4px; background: transparent; color: var(--text-2); font-family: var(--font-mono); font-size: var(--fs-base); }
+.prog-path:focus { outline: none; border-color: var(--accent, #4c8dff); }
+
+
+/* 「进度」页 v2：顶部大条 + 主任务卡 + 逐条列表。
+   一屏内要装下上百条，所以逐条那块用细行 + 3px 的迷你条，只把“在跑”的挑出来给动效。 */
+.prog2-select {
+  width: 100%; box-sizing: border-box; margin: 0 0 8px; padding: 5px 7px;
+  border: 1px solid var(--border-soft); border-radius: 4px;
+  background: transparent; color: var(--text-2); font-size: var(--fs-base);
+}
+
+/* 总览一行装下：百分比（左）+ 条与计数（右）。原先是三段竖排，光顶上就吃掉小半屏。 */
+.prog2-sum { display: flex; align-items: center; gap: 12px; margin: 6px 0 0; }
+.prog2-sum-pct {
+  flex: none; min-width: 46px;
+  font-family: var(--font-mono); font-size: var(--fs-lg); line-height: 1;
+  font-weight: 600; color: var(--text); letter-spacing: -0.5px;
+}
+.prog2-sum-pct i { font-style: normal; font-size: calc(var(--fs-base) + 1px); color: var(--text-2); margin-left: 1px; }
+.prog2-sum-pct.dead { color: var(--warn, #c9a227); }
+.prog2-sum-mid { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+/* 总区一律 16px、近黑、500 重 —— 「力量感」靠字重和灰度拿，不靠缩字号。
+   下面是分段的 15px 灰字，两区之间留 24px 实空白（见 .prog2-cards）。 */
+.prog2-sum-meta { font-size: calc(var(--fs-base) + 1px); font-weight: 500; color: var(--text); }
+.prog2-hero-run { color: var(--accent, #4c8dff); margin-left: 4px; }
+.prog2-hero-dead { color: var(--warn, #c9a227); margin-left: 4px; }
+.prog2-bar-fill.dead { background: var(--warn, #c9a227); }
+
+/* 头部右侧的动作：打开快照所在的文件夹。平时低调到不抢标题，悬停要看得见。 */
+.prog2-act {
+  flex: none; display: inline-flex; align-items: center; justify-content: center;
+  width: 20px; height: 20px; padding: 0;
+  border: none; border-radius: 4px; background: transparent; cursor: pointer;
+  color: var(--faint);
+}
+.prog2-act:hover { background: var(--hover-soft); color: var(--text); }
+
+.prog2-bar {
+  position: relative; height: 10px; border-radius: 5px;
+  background: var(--hover-soft); overflow: hidden;
+}
+.prog2-bar-fill {
+  display: block; height: 100%; border-radius: 4px;
+  background: linear-gradient(90deg, var(--accent, #4c8dff), var(--ok, #3fa96a));
+  transition: width 0.4s ease;
+}
+/* 总步数不可知（agent 这类）⇒ 跑马纹占满，与卡片迷你条的不定态同一个语法：
+   宁可承认"不知道"，也不画一个假的百分比。 */
+.prog2-bar-fill.indet {
+  width: 100%;
+  background: repeating-linear-gradient(45deg, var(--accent, #4c8dff) 0 6px, transparent 6px 12px);
+  animation: prog2-slide 0.9s linear infinite;
+}
+
+/* 退场后的那一行：活儿干完 10 秒，面板自己收成它。
+   仍然回答「到哪了」，只是不再占一屏 —— 点一下能展开回去。 */
+.prog2-done {
+  display: flex; align-items: center; gap: 7px; width: 100%;
+  padding: 7px 8px; border: none; border-radius: 6px;
+  background: var(--hover-soft);
+  font-family: var(--font-sans); font-size: var(--fs-base);
+  cursor: pointer; text-align: left;
+}
+.prog2-done:hover { background: var(--hover); }
+.prog2-done-mark { flex: none; color: var(--ok, #06ad56); font-weight: 600; }
+.prog2-done-t { flex: none; font-weight: var(--fw-medium); color: var(--text); }
+.prog2-done-when { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
+.prog2-done svg { flex: none; transform: rotate(-90deg); color: var(--faint); }
+
+.prog2-cards { list-style: none; margin: 24px 0 0; padding: 0; display: flex; flex-direction: column; gap: 9px; }
+.prog2-card {
+  padding: 9px 10px; border-radius: 6px;
+  background: var(--hover-soft);
+  border-left: 2px solid var(--muted);
+}
+.prog2-card.tone-live { border-left-color: var(--accent, #4c8dff); }
+.prog2-card.tone-ok { border-left-color: var(--ok, #3fa96a); }
+.prog2-card.tone-bad { border-left-color: var(--danger, #d9534f); }
+.prog2-card-top { display: flex; align-items: baseline; gap: 6px; }
+/* 分段区：一律 15px（比总区小 1px）、整体压灰 —— 层级只靠灰度，不再靠缩字号。 */
+.prog2-card-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-base); font-weight: var(--fw-medium); color: var(--text-2); }
+.prog2-card-pct { flex: none; font-family: var(--font-mono); font-size: var(--fs-base); color: var(--muted); }
+.prog2-card-bot { display: flex; align-items: baseline; gap: 8px; margin-top: 6px; }
+.prog2-num { flex: none; font-family: var(--font-mono); font-size: var(--fs-base); color: var(--muted); }
+.prog2-what { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-base); color: var(--muted); }
+
+.prog2-mini {
+  position: relative; height: 4px; border-radius: 2px;
+  background: var(--hover-soft); overflow: hidden; margin: 6px 0;
+}
+.prog2-mini i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--muted); border-radius: 2px; transition: width 0.3s ease; }
+.tone-live .prog2-mini i { background: var(--accent, #4c8dff); }
+.tone-ok .prog2-mini i { background: var(--ok, #3fa96a); }
+.tone-bad .prog2-mini i { background: var(--danger, #d9534f); }
+.prog2-mini i.indet {
+  width: 100%;
+  background: repeating-linear-gradient(45deg, var(--accent, #4c8dff) 0 6px, transparent 6px 12px);
+  animation: prog2-slide 0.9s linear infinite;
+}
+@keyframes prog2-slide { from { background-position: 0 0; } to { background-position: 12px 0; } }
+
+.prog2-chips { display: flex; flex-wrap: wrap; gap: 4px; margin: 14px 0 8px; }
+.prog2-chip {
+  padding: 2px 7px; border-radius: 10px; cursor: pointer;
+  border: 1px solid var(--border-soft); background: transparent;
+  color: var(--text-2); font-size: var(--fs-base);
+}
+.prog2-chip b { font-family: var(--font-mono); font-weight: 400; color: var(--muted); }
+.prog2-chip.on { border-color: var(--accent, #4c8dff); color: var(--text); }
+.prog2-chip.on b { color: var(--accent, #4c8dff); }
+
+.prog2-search {
+  width: 100%; box-sizing: border-box; margin: 0 0 6px; padding: 5px 7px;
+  border: 1px solid var(--border-soft); border-radius: 4px; background: transparent;
+  color: var(--text); font-size: var(--fs-base);
+}
+.prog2-search:focus { outline: none; border-color: var(--accent, #4c8dff); }
+
+.prog2-list { list-style: none; margin: 0; padding: 0; }
+.prog2-row { display: flex; gap: 7px; padding: 5px 0; border-top: 1px solid var(--border-soft); }
+.prog2-row .prog2-mini { margin: 3px 0 2px; }
+.prog2-body { flex: 1; min-width: 0; }
+.prog2-line1 { display: flex; align-items: baseline; gap: 6px; }
+.prog2-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-base); color: var(--text); }
+.prog2-secs { flex: none; font-family: var(--font-mono); font-size: var(--fs-base); color: var(--muted); }
+.prog2-line2 { display: flex; align-items: baseline; gap: 6px; }
+.prog2-desc { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-base); color: var(--text-2); }
+.prog2-note { flex: none; font-family: var(--font-mono); font-size: var(--fs-base); color: var(--muted); }
+
+.prog2-dot {
+  flex: none; width: 6px; height: 6px; border-radius: 50%; margin-top: 5px;
+  background: var(--faint);
+}
+.prog2-dot.live { background: var(--accent, #4c8dff); box-shadow: 0 0 0 2px rgba(76, 141, 255, 0.18); }
+.prog2-dot.ok { background: var(--ok, #3fa96a); }
+.prog2-dot.bad { background: var(--danger, #d9534f); }
+.prog2-dot.dead { background: var(--warn, #c9a227); }
+
+.prog2-link {
+  margin: 6px 0 0; padding: 0; border: none; background: none; cursor: pointer;
+  color: var(--text-2); font-size: var(--fs-base); text-decoration: underline;
+}
+.prog2-errline { display: block; font-family: var(--font-mono); font-size: var(--fs-base); color: var(--muted); word-break: break-all; }
+
+/* 折叠开关：整行一个小按钮，箭头展开时转 90°（chevron 默认朝右）。 */
+.prog2-fold {
+  display: flex; align-items: center; gap: 5px; width: 100%;
+  margin: 12px 0 0; padding: 5px 0; border: none; border-top: 1px solid var(--border-soft);
+  background: none; cursor: pointer; color: var(--text-2); font-size: var(--fs-base);
+  text-align: left;
+}
+.prog2-fold:hover { color: var(--text); }
+.prog2-fold b { font-family: var(--font-mono); font-weight: 400; color: var(--muted); }
+.prog2-fold svg { transition: transform 0.15s ease; }
+.prog2-fold.on svg { transform: rotate(90deg); }
+.prog2-fold-body { display: block; }
+.prog2-hidden { display: none; }

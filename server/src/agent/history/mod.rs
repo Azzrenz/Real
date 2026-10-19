@@ -65,8 +65,17 @@ pub async fn build_history(pool: &sqlx::SqlitePool, session_id: &str) -> AppResu
     let input_tokens = session_input_tokens(pool, session_id).await;
     // 登记本会话压力，供**动态 spill 阈值**（`th::spill_threshold_for`）使用。
     crate::mcp::spill::set_session_pressure(session_id, input_tokens.max(0) as u64);
-    // 启动线 = **窗口安全线**（与 ①`archive_old_tasks` / ⑤`archive_old_body` 同一把尺子）。
-    let budget = govern::window_safe_tokens() as u64;
+    // 窗口起点决策的判据线 = **发送安全线**（`send_safe_tokens`）——不再用水位线，理由见下。
+    // 窗口前移的**唯一合法目的**是「不撞上游 400」⇒ 判据必须是**发送安全线**。
+    // ⚠️ 09-27 修：原先用 `window_safe_tokens()`（= 水位线，`WINDOW_SAFE_PERMILLE=5‰`，
+    // 硬上限 96KB ⇒ ≤27K token）当这条线。而实测活跃会话单个 run 的 input 常态
+    // 在 100K~150K ⇒ **每轮都判「超线」⇒ 每轮前移窗口起点 ⇒ 删历史头部 ⇒ 前缀从
+    // 下标 0 整体错位 ⇒ 上下文前缀缓存全量作废**（日志实证：`first=0 replaced=392
+    // old_tail_bytes=439139`，单轮白付 43.9 万字节 ≈ 0.15 元）。
+    // 这正是 09-25 把 `SEND_SAFE_PERMILLE` 70→150 时**漏掉的那一条姊妹线**。
+    // 水位线的职责是「成本治理」，由 `archive_*`/`trim_stale_frames` 承担（受 `may_rewrite`
+    // 闸门约束、且改写保前缀不删头）；**绝不该由它驱动「删头」这种最伤缓存的动作**。
+    let budget = govern::window_shift_budget();
     let (start, write_anchor) =
         window_start_decision(stored, talk.len(), low, high, input_tokens, budget);
     if write_anchor {

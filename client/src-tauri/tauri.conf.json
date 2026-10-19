@@ -28,8 +28,8 @@
           "**"
         ]
       },
-      "csp": "default-src 'self'; connect-src 'self' http://asset.localhost http://localhost:8943 http://127.0.0.1:8943; img-src 'self' data: http://asset.localhost; style-src 'self' 'unsafe-inline'",
-      "devCsp": "default-src 'self' http://localhost:8618; connect-src 'self' http://asset.localhost http://localhost:8943 http://127.0.0.1:8943 ws://localhost:8618 http://localhost:8618; img-src 'self' data: http://asset.localhost; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-eval'"
+      "csp": "default-src 'self'; connect-src 'self' http://asset.localhost http://localhost:8943 http://127.0.0.1:8943; img-src 'self' data: http://asset.localhost; media-src 'self' http://asset.localhost; frame-src 'self' http://asset.localhost; style-src 'self' 'unsafe-inline'",
+      "devCsp": "default-src 'self' http://localhost:8618; connect-src 'self' http://asset.localhost http://localhost:8943 http://127.0.0.1:8943 ws://localhost:8618 http://localhost:8618; img-src 'self' data: http://asset.localhost; media-src 'self' http://asset.localhost; frame-src 'self' http://asset.localhost; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-eval'"
     }
   },
   "bundle": {

@@ -25,6 +25,15 @@ pub enum AppError {
     #[error("参数校验失败: {0}")]
     Validation(String),
 
+    #[error("未授权: {0}")]
+    Unauthorized(String),
+
+    #[error("禁止访问: {0}")]
+    Forbidden(String),
+
+    #[error("请求过于频繁: {0}")]
+    TooManyRequests(String),
+
     #[error("HTTP 请求失败: {0}")]
     Http(#[from] reqwest::Error),
 
@@ -33,6 +42,27 @@ pub enum AppError {
 
     #[error("内部错误: {0}")]
     Internal(String),
+}
+
+/// 传输类错误判定：SSE 读取/流式网络错误可重试；
+///
+/// 从 `agent/orchestration/workflow.rs` 归位——它只认 `AppError`，属错误域know-how，
+/// 不该由主循环随身携带（调用点保持自由函数形态，故原样搬家）。
+pub fn is_transport_error(e: &AppError) -> bool {
+    let s = e.to_string();
+    // "流异常早停"判为可重试：偶发抖动自愈，持续早停（重试 3 次）才上抛
+    s.contains("SSE 读取失败") || s.contains("流式网络请求失败") || s.contains("SSE 解析失败")
+        || s.contains("流异常早停")
+        || is_upstream_unavailable(e)
+}
+
+/// 上游不可用（HTTP 5xx / 408 / 网络层失败）——与"模型答错了"不是一回事
+pub fn is_upstream_unavailable(e: &AppError) -> bool {
+    let s = e.to_string();
+    if s.contains("LLM 流式 HTTP 5") || s.contains("LLM 流式 HTTP 408") || s.contains("上游繁忙") {
+        return true;
+    }
+    matches!(e, AppError::Http(_)) || s.contains("流式网络请求失败")
 }
 
 impl AppError {
@@ -44,6 +74,9 @@ impl AppError {
             AppError::Tool(_) => StatusCode::BAD_GATEWAY,
             AppError::NotFound(_) => StatusCode::NOT_FOUND,
             AppError::Validation(_) => StatusCode::UNPROCESSABLE_ENTITY,
+            AppError::Unauthorized(_) => StatusCode::UNAUTHORIZED,
+            AppError::Forbidden(_) => StatusCode::FORBIDDEN,
+            AppError::TooManyRequests(_) => StatusCode::TOO_MANY_REQUESTS,
             AppError::Http(_) => StatusCode::BAD_GATEWAY,
             AppError::Io(_) => StatusCode::INTERNAL_SERVER_ERROR,
             AppError::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,

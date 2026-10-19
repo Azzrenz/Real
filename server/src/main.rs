@@ -1,6 +1,7 @@
 //! Real Agent 后端入口
 
 mod agent;
+mod auth;
 mod backbone;
 mod config;
 mod confirm;
@@ -234,6 +235,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         hub: sse::EventHub::new(),
         cancels: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
         confirm_gate: Arc::new(crate::confirm::ConfirmGate::new()),
+        // 设备鉴权（配对码 / SSE 票据在内存；设备档案落 devices 表）
+        auth: Arc::new(crate::auth::AuthStore::new()),
     };
 
     // ---- 定时触发调度器（Cron / Heartbeat）----
@@ -247,14 +250,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     crate::mcp::spill::spawn_spill_sweeper(state.pool.clone());
 
     // ---- 路由 ----
-    let app = routes::router().with_state(state);
+    let app = routes::router(state);
     let addr = format!("{}:{}", cfg.host, cfg.port);
     let listener = tokio::net::TcpListener::bind(&addr).await?;
     tracing::info!(addr = %addr, "HTTP 服务已监听");
 
-    axum::serve(listener, app)
-        .with_graceful_shutdown(shutdown_signal())
-        .await?;
+    // 必须带 connect info：鉴权层据**真实对端地址**判定「是否回环免鉴权」。
+    // 这里给的是 TCP 对端（不可伪造）；`X-Forwarded-For` 只在「对端是回环 且
+    // 开了 REAL_TRUST_LOCAL_PROXY」时才由 auth_guard 采信（用于 tailscale serve 这类本机代理）。
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+    )
+    .with_graceful_shutdown(shutdown_signal())
+    .await?;
 
     Ok(())
 }

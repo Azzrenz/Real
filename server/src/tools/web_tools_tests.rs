@@ -4,6 +4,19 @@ use super::*;
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
+
+    /// 搜索凭据是**进程级全局**（`web_tools` 的 `SEARCH_KEY` 单例，`web_tools.rs:9`）。
+    /// 下面两个用例都会写它，而 cargo 默认**多线程并行**跑用例 ⇒ 不加锁会互相踩
+    /// （全量偶发 `left: None / right: Some("sk-any")`）：一个刚 `set_search_key(None)`，
+    /// 另一个的 `search_key()` 立刻读到 None。用一把共享互斥把这两个用例串行化。
+    /// `into_inner` 兜底：某次 panic 毒化锁也不连累后续用例。
+    static SEARCH_KEY_LOCK: Mutex<()> = Mutex::new(());
+
+    /// 取搜索凭据互斥（所有会读写该全局的用例都必须先拿它）。
+    fn lock_search_key() -> std::sync::MutexGuard<'static, ()> {
+        SEARCH_KEY_LOCK.lock().unwrap_or_else(|e| e.into_inner())
+    }
 
     #[test]
     fn strip_html_removes_tags_scripts_entities() {
@@ -20,6 +33,7 @@ mod tests {
 
     #[test]
     fn search_without_key_teaches_config() {
+        let _g = lock_search_key();
         // 未配置 key：确定性教学（不瞎跑网络）
         set_search_key(None);
         assert!(!has_search_key(), "清空后 has_search_key 应为 false");
@@ -33,6 +47,7 @@ mod tests {
 
     #[test]
     fn search_key_is_independent_of_model() {
+        let _g = lock_search_key();
         set_search_key(Some("sk-any".into()));
         assert!(has_search_key(), "写入后应为 true");
         assert_eq!(search_key().as_deref(), Some("sk-any"));

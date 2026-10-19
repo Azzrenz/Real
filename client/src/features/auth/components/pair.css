@@ -1,0 +1,172 @@
+/* ═══════════════════════════════════════════════════════════════════
+   配对页 —— 手机端第一次打开时唯一能看到的界面。
+   单独一张全屏卡片：居中、大触控目标、说明优先于表单。
+   颜色全部取自 tokens.css，跟随主题。
+   ═══════════════════════════════════════════════════════════════════ */
+.pair-screen {
+  min-height: var(--app-h, 100dvh);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: calc(24px + env(safe-area-inset-top)) 20px
+    calc(24px + env(safe-area-inset-bottom));
+  background:
+    radial-gradient(120% 60% at 50% 112%, var(--real-soft) 0%, transparent 55%),
+    var(--bg);
+}
+
+.pair-card {
+  width: 100%;
+  max-width: 420px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  padding: var(--sp-6);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-xl);
+  background: var(--panel);
+  box-shadow: var(--shadow-lg);
+}
+
+.pair-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: var(--sp-1);
+}
+.pair-flame {
+  color: var(--real-bright);
+  filter: drop-shadow(0 0 10px var(--real-soft));
+}
+.pair-name {
+  font-family: var(--font-display);
+  font-size: var(--fs-2xl);
+  font-weight: var(--fw-semibold);
+  letter-spacing: var(--ls-brand);
+  color: var(--text);
+}
+
+.pair-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: var(--fs-xl);
+  font-weight: var(--fw-semibold);
+  color: var(--text);
+}
+.pair-sub {
+  margin: 0 0 var(--sp-2);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-body);
+  color: var(--text-2);
+}
+
+.pair-label {
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  color: var(--muted);
+}
+
+/* 6 位码：大号等宽、字距拉开，像读验证码一样一眼看清 */
+.pair-code {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 14px 16px;
+  border: 2px solid var(--input-border);
+  border-radius: var(--radius-lg);
+  background: var(--inset);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 30px;
+  font-weight: var(--fw-semibold);
+  letter-spacing: 0.42em;
+  text-align: center;
+  text-indent: 0.42em;
+  outline: none;
+}
+.pair-code:focus { border-color: var(--real); box-shadow: var(--real-ring); }
+.pair-code::placeholder { color: var(--faint); letter-spacing: 0.3em; }
+
+.pair-server {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 11px 13px;
+  border: 1px solid var(--input-border);
+  border-radius: var(--radius);
+  background: var(--inset);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  outline: none;
+}
+.pair-server:focus { border-color: var(--real); box-shadow: var(--real-ring); }
+
+.pair-advanced-toggle {
+  align-self: flex-start;
+  padding: 6px 2px;
+  border: none;
+  background: none;
+  color: var(--faint);
+  font: inherit;
+  font-size: var(--fs-xs);
+  text-align: left;
+  cursor: pointer;
+  text-decoration: underline dotted;
+}
+.pair-advanced-toggle:hover { color: var(--text-2); }
+
+.pair-hint {
+  margin: 0;
+  font-size: var(--fs-xs);
+  line-height: var(--lh-body);
+  color: var(--faint);
+}
+
+.pair-error {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: var(--radius);
+  background: var(--danger-soft);
+  color: var(--danger-strong, var(--danger));
+  font-size: var(--fs-sm);
+  line-height: 1.6;
+}
+.pair-error svg { flex: none; margin-top: 2px; }
+
+.pair-submit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 48px;              /* 触控目标下限 */
+  margin-top: var(--sp-1);
+  padding: 12px 18px;
+  border: none;
+  border-radius: var(--radius-lg);
+  background: var(--btn-primary-bg);
+  color: var(--btn-primary-text);
+  font-family: var(--font-sans);
+  font-size: var(--fs-md);
+  font-weight: var(--fw-semibold);
+  cursor: pointer;
+  transition: background var(--t-fast), transform 80ms ease;
+}
+.pair-submit:hover:not(:disabled) { background: var(--btn-primary-hover); }
+.pair-submit:active:not(:disabled) { transform: scale(0.98); }
+.pair-submit:disabled { opacity: 0.45; cursor: default; }
+
+.pair-foot {
+  margin: var(--sp-1) 0 0;
+  font-size: var(--fs-xs);
+  line-height: var(--lh-body);
+  color: var(--faint);
+  text-align: center;
+}
+
+.pair-submit .icon-spin { animation: pair-spin 0.8s linear infinite; }
+@keyframes pair-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .pair-submit .icon-spin { animation: none; }
+}

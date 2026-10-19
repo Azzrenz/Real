@@ -1,0 +1,581 @@
+/* ═══════════════════════════════════════════════════════════════════
+   Real — 手机版（窄屏）布局。
+   ─────────────────────────────────────────────────────────────────────
+   断点与 `shared/lib/viewport.ts` 里的 MOBILE_QUERY 必须一致：768px。
+
+   为什么桌面不会受影响：Tauri 窗口 `minWidth: 900`（src-tauri/tauri.conf.json），
+   壳里视口永远 ≥900px ⇒ 这个查询恒为 false，下面的规则一条都不会命中。桌面
+   「视觉与交互零变化」是由窗口最小宽度保证的，不是靠约定，也不是靠 UA 嗅探。
+
+   形态取向：**移动端对话产品**，不是把桌面布局等比压窄。
+   - 单栏、内容通栏、底部常驻输入
+   - 顶部一条轻量状态（在做什么 / 花了多少）——见 MobileStatusBar
+   - 侧栏变抽屉（常显汉堡按钮，不依赖 hover）
+   - 详细过程默认收起，点开才看（见 AssistantRound 的 compact）
+   ═══════════════════════════════════════════════════════════════════ */
+
+@media (max-width: 768px) {
+  /* ── 视口与安全区 ──────────────────────────────────────────────
+     `100dvh` 而不是 `100%`：地址栏收放时 `100%` 可能在「大视口」上，底部输入框会被
+     浏览器 UI 盖住。dvh 跟随当前可见高度，键盘/地址栏变化时输入框始终可见。
+     `--app-h` 由 `useAppHeight()` 从 `visualViewport` 写入，更贴近真实可见高度
+     （iOS 弹键盘时只有它能跟上），没有时退回 100dvh。 */
+  html,
+  body,
+  #root {
+    height: var(--app-h, 100dvh);
+    max-height: var(--app-h, 100dvh);
+  }
+  body {
+    overscroll-behavior-y: none;   /* 下拉刷新会打断正在流式输出的对话 */
+  }
+
+  .app {
+    height: var(--app-h, 100dvh);
+    border: none;                   /* 手机是全屏，不要窗口轮廓 */
+    border-radius: 0;
+  }
+
+  /* ── 标题栏：移动端 app header ───────────────────────────────
+     形态：左一个圆形汉堡、中间「主标题 + 一行次要信息」、右侧留空。
+     隐藏三件桌面专属：拖拽区（Tauri）、编辑/帮助菜单（execCommand）、窗口按钮
+     （手机会直接报错/空转）；品牌按钮也收起 —— 设置入口挪进抽屉底部。 */
+  .titlebar {
+    height: calc(56px + env(safe-area-inset-top));
+    padding: env(safe-area-inset-top) 12px 0 8px;
+    gap: 4px;
+    background: var(--chat-bg);
+    border-bottom: none;           /* 与内容连成一片，不要桌面那条分隔线 */
+  }
+  .titlebar-drag,
+  .titlebar-menu,
+  .titlebar-actions,
+  .titlebar-title,
+  .titlebar-view,
+  .titlebar-home,
+  .titlebar-brand { display: none; }
+
+  /* 汉堡：浅色圆底，触控目标 44×44。 */
+  .m-menu-btn {
+    position: relative;
+    flex: none;
+    width: 44px;
+    height: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    border-radius: 50%;
+    background: var(--panel-2);
+    color: var(--text);
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .m-menu-btn:active { filter: brightness(0.93); }
+  .m-menu-btn svg { width: 22px; height: 22px; display: block; }
+  /* 有一步在等你审批：审批是核心动作，锁屏/切后台之后，这颗点就是唯一的"回来看看"信号。
+     用审批色（--warn）而不是红 —— 与状态条的「等你审批」是同一种语气。 */
+  .m-menu-dot {
+    position: absolute;
+    top: 5px;
+    right: 5px;
+    width: 11px;
+    height: 11px;
+    border-radius: 50%;
+    background: var(--warn);
+    box-shadow: 0 0 0 2px var(--chat-bg);
+    animation: pulse 1.2s infinite;
+  }
+
+  .m-titlebar-mid {
+    flex: 1 1 auto;
+    min-width: 0;
+    margin-left: 10px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 1px;
+  }
+  .m-titlebar-title {
+    font-size: var(--fs-lg);
+    font-weight: var(--fw-semibold);
+    color: var(--text);
+    line-height: 1.25;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .m-titlebar-sub {
+    font-size: var(--fs-xs);
+    color: var(--muted);
+    line-height: 1.2;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* ── 侧栏 → 抽屉 ──────────────────────────────────────────────
+     固定定位、默认移出屏幕；`.app.drawer-open` 时滑入。桌面那套 hover 热区（默认
+     opacity:0，只有 :hover 才显形）在触屏上永远看不见，手机上直接换成常显汉堡按钮。 */
+  .sidebar {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: min(84vw, 320px);
+    min-width: 0;
+    z-index: 70;
+    transform: translateX(-100%);
+    transition: transform 240ms var(--ease-standard);
+    box-shadow: var(--shadow-lg);
+    border-right: 1px solid var(--border-strong);
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  /* 手机上抽屉的显隐只由 drawer-open 决定，与桌面持久化的 collapsed 状态解耦。
+     桌面那条 `.app.sidebar-collapsed .sidebar { display: none }` 必须在这里被压过，
+     否则用户一旦在桌面上收过侧栏，手机上抽屉就再也打不开了。 */
+  .app .sidebar,
+  .app.sidebar-collapsed .sidebar { display: flex; }
+  .app.drawer-open .sidebar { transform: none; }
+
+  /* 抽屉内容对标移动端对话产品的抽屉：一个全宽大圆角描边的「新建任务」、
+     一级小标题，然后是**纯文字行**的任务列表（无卡片、无边框、大字号、松行距）。
+     最下面一条是设置入口。 */
+  .sidebar-new { padding: 4px 16px 12px; margin-top: 4px; }
+  .new-task-btn {
+    justify-content: center;
+    gap: 8px;
+    min-height: 46px;
+    padding: 0 16px;
+    border: 1px solid var(--border-soft);
+    border-radius: 999px;
+    color: var(--text);
+    font-size: var(--fs-md);
+    font-weight: var(--fw-medium);
+    letter-spacing: 0;
+  }
+  .new-task-btn:active { background: var(--hover-soft); }
+
+  .sidebar-list { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 0 8px 8px; }
+  .session-group-label { padding: 12px 10px 6px; font-size: var(--fs-sm); color: var(--muted); }
+
+  /* 任务 = 纯文字行。选中态只改字重与颜色，不再画一块背景 ——
+     这是这套视觉语言里最值得抄的一条（抽屉截图里的列表就是纯文字）。 */
+  .session-item {
+    padding: 12px 10px;
+    min-height: 48px;
+    margin-bottom: 0;
+    background: transparent;
+  }
+  .session-item:active { background: var(--hover-soft); }
+  .session-item.active { background: transparent; }
+  .session-item.active::before { display: none; }
+  .session-item .session-title { font-size: var(--fs-md); line-height: 1.5; }
+  .session-item.active .session-title { font-weight: var(--fw-semibold); color: var(--real); }
+  /* 时间与领域标签在抽屉里都是噪音，只留一行任务名。 */
+  .session-item .session-area,
+  .session-item .session-time { display: none; }
+
+  /* 行首那个 6px 状态槽：手机端换成转圈（在跑）或琥珀点（等你审批）。
+     两者都比 .status-dot(6px) 宽，用负 margin 抵消掉，否则整列左边缘会随状态跳动。 */
+  .session-item .session-spin {
+    flex: none;
+    width: 16px;
+    height: 16px;
+    margin: 0 -5px;
+    color: var(--real);
+    animation: m-spin 0.8s linear infinite;
+  }
+  .session-item .session-need {
+    flex: none;
+    width: 10px;
+    height: 10px;
+    margin: 0 -2px;
+    border-radius: 50%;
+    background: var(--warn);
+    box-shadow: 0 0 6px var(--warn);
+    animation: pulse 1.2s infinite;
+  }
+
+  .m-drawer-foot {
+    flex: none;
+    order: 3;            /* shell.css 给 .sidebar-new/.sidebar-list 定了 order 1/2，这里必须排在其后 */
+    padding: 8px 8px calc(8px + env(safe-area-inset-bottom));
+    border-top: 1px solid var(--border-soft);
+  }
+  /* 「我连的是哪台电脑」。对标参考图抽屉底部那块身份区，但 Real 更有用的信息是连到哪。 */
+  .m-drawer-conn {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 4px 12px 8px;
+    font-size: var(--fs-xs);
+    color: var(--muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .m-drawer-conn-dot {
+    flex: none;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--ok);
+  }
+  .m-drawer-foot-btn {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 48px;
+    padding: 0 12px;
+    border: none;
+    border-radius: 12px;
+    background: transparent;
+    color: var(--text);
+    font-size: var(--fs-md);
+    cursor: pointer;
+  }
+  .m-drawer-foot-btn:active { background: var(--hover-soft); }
+
+  .drawer-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 65;
+    border: none;
+    padding: 0;
+    background: rgba(0, 0, 0, 0.42);
+    animation: fade-in var(--t-fast) var(--ease-standard);
+  }
+
+  /* hover 才显形的两个入口：手机上统统收起（抽屉有汉堡、Dock 是桌面专属窗口）。 */
+  .sidebar-hotzone { display: none; }
+  .dock-hotzone { display: none; }
+
+  /* ── 会话区 ──────────────────────────────────────────────────
+     隐藏 .chat-head（HeadDock 移到 MobileStatusBar 里，任务标题移到标题栏），
+     省掉一条在 390px 上纯占高度的横条。 */
+  .chat-head { display: none; }
+
+  .chat-body {
+    padding: var(--sp-3) 12px calc(var(--sp-8) + env(safe-area-inset-bottom));
+    scrollbar-gutter: auto;          /* 手机不需要给滚动条留白 */
+  }
+  .chat-flow {
+    width: 100%;
+    max-width: 100%;
+  }
+  .chat-flow > * + * { margin-top: var(--sp-4); }
+
+  /* 气泡：贴边留白小一点，读起来更像对话 */
+  .msg-user {
+    max-width: 88%;
+    padding: 10px 14px;
+    font-size: var(--fs-base);
+    line-height: 1.9;
+  }
+  .msg-attach-chip { max-width: 60vw; }
+
+  /* ── 顶部状态条（MobileStatusBar）─────────────────────────── */
+  .m-status {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 40px;
+    padding: 4px 8px 4px 12px;
+    background: var(--chat-bg);
+    border-bottom: 1px solid var(--border);
+  }
+  .m-status-dot {
+    flex: none;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--faint);
+  }
+  .m-status.tone-running .m-status-dot {
+    background: var(--real);
+    box-shadow: 0 0 6px var(--real);
+    animation: pulse 1.2s infinite;
+  }
+  .m-status.tone-approval .m-status-dot {
+    background: var(--warn);
+    box-shadow: 0 0 6px var(--warn);
+    animation: pulse 1.2s infinite;
+  }
+  .m-status.tone-done .m-status-dot { background: var(--ok); }
+  .m-status-label {
+    flex: none;
+    font-size: var(--fs-sm);
+    font-weight: var(--fw-semibold);
+    color: var(--text);
+  }
+  .m-status.tone-approval .m-status-label { color: var(--warn); }
+  .m-status-step {
+    flex: 1 1 auto;
+    min-width: 0;
+    font-size: var(--fs-sm);
+    color: var(--muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .m-status-cost {
+    flex: none;
+    font-size: var(--fs-xs);
+    color: var(--faint);
+    font-variant-numeric: tabular-nums;
+  }
+  .m-status-dock { flex: none; display: flex; align-items: center; position: relative; }
+  /* HeadDock 的根是 `position:absolute; left:50%; top:50%`（桌面靠 .chat-head 那个定位父级居中）。
+     塞进零定位的状态条里它会逃逸到整页中间去 —— 这里必须把它拉回文档流。 */
+  .m-status-dock .hdock {
+    position: static;
+    left: auto;
+    top: auto;
+    transform: none;
+    gap: 4px;
+  }
+  /* HeadDock 在状态条里只留图标：文字标签会把 390px 挤爆。 */
+  .m-status-dock .hdock-btn span { display: none; }
+  .m-status-dock .hdock-btn { width: 40px; height: 40px; padding: 0; justify-content: center; }
+
+  /* 收起态的那一行「执行过程」：桌面上箭头只在 hover 时显形，手机上永远没有 hover，
+     所以直接常显，否则它看起来是一行普通文字、根本不像能点开。 */
+  .done-process-head .flow-row-caret { opacity: 0.7; }
+  .done-process-head { min-height: 40px; }
+
+  /* ── 输入区 ──────────────────────────────────────────────────
+     桌面写死 `clamp(920px …)` 的下限——390px 屏上直接横向溢出。手机通栏、100%。 */
+  .chat-input-wrap {
+    padding: 4px 12px calc(10px + env(safe-area-inset-bottom));
+  }
+  /* 输入框形态向移动端对话产品靠：无描边、浅灰填充、大圆角。 */
+  .chat-input-box {
+    width: 100%;
+    max-width: 100%;
+    border: none;
+    border-radius: 22px;
+    background: var(--panel-2);
+    box-shadow: none;
+  }
+  .chat-input-box:focus-within { box-shadow: var(--real-ring); }
+  .chat-input-box textarea { padding: 12px 14px 2px; }
+  /* 拖拽调高在触屏上是无效手势（mousemove 不会来），直接不给这个把柄。 */
+  .input-drag-handle { display: none; }
+
+  /* 触控目标：底部工具条每个按钮 ≥44px。桌面这一行是「一行排开」，
+     390px 上排不下（模型名 + 附件 + 技能 + 确认开关 + 发送）。手机上不换行——
+     发送钉在右侧，左边那组横向可滚（像移动端对话产品那样），
+     否则换行后发送单独占一行、左上角留一块空，很难看。 */
+  .chat-input-foot {
+    flex-wrap: nowrap;
+    padding: 4px 6px 6px;
+    gap: 6px;
+  }
+  .chat-input-foot-left {
+    flex: 1 1 auto;
+    flex-wrap: nowrap;
+    /* 有空隙就摊开：这一行有 4 个控件，紧挨着显得很挤，铺开反而更清楚。 */
+    justify-content: space-between;
+    gap: 4px;
+    min-width: 0;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .chat-input-foot-left::-webkit-scrollbar { display: none; }
+  .chat-input-foot-left > * { flex: none; }
+  .chat-input-foot-right { margin-left: auto; gap: 4px; }
+  .chat-input-foot .input-tool-chip,
+  .chat-input-foot .btn.ghost,
+  .chat-input-foot .danger-toggle {
+    min-height: 44px;
+    padding: 8px 8px;
+  }
+  /* 模型名在 390px 上只剩「GLM 5...」，等于没说。132px 下名字拿到约 90px，
+     「GLM 5.3 Flash」这种长度能整句放下；再放个限定词把 composer.css 的
+     `padding: 5px 10px` 压回去（同级选择器比的是引入顺序，composer.css 后加载会赢），
+     省下的 4px 给名字。 */
+  .chat-input-foot .model-chip { max-width: 140px; }
+  .chat-input-foot .model-chip.input-tool-chip { padding: 8px 8px; }
+  /* 发送键：正方形 44px 的图标按钮。注意 composer.css:102 给的是 `min-width: 68px`，
+     所以必须一起写 min-width，只写 width 会被它按加载顺序压掉（实测 68px，不是圆）。
+     背景保持透明（跟参考图的纯图标发送一致），只靠按下时的底色给反馈。 */
+  .chat-input-foot .composer-send {
+    width: 44px;
+    min-width: 44px;
+    height: 44px;
+    min-height: 44px;
+    padding: 0;
+    border-radius: 50%;
+    justify-content: center;
+    font-size: 0;
+  }
+  .chat-input-foot .composer-send:active:not(:disabled) { background: var(--hover-soft); }
+  .chat-input-foot .composer-send svg { width: 19px; height: 19px; }
+
+  .jump-down {
+    width: 44px;
+    height: 44px;
+    margin-left: -22px;
+    bottom: calc(100% + 12px);
+  }
+
+  /* ── 起始页 ──────────────────────────────────────────────────
+     `.empty-inner` 与 composer 同一写法（clamp 920px 下限）⇒ 同样通栏。
+     手机上把输入框钉在这块区域的底部（margin-top:auto），像对话产品而不是「卡片下面跟个框」。 */
+  .empty-state {
+    justify-content: flex-start;
+    padding: var(--sp-5) 12px var(--sp-8);
+    gap: var(--sp-5);
+  }
+  .empty-inner {
+    width: 100%;
+    max-width: 100%;
+    flex: 1 1 auto;
+    min-height: 0;
+    gap: var(--sp-5);
+  }
+  /* 品牌区：只留一枚大 logo + 一行大字定位语（「Real」这个词标题栏里已经有了，
+     手机上不必再重复一遍）。 */
+  .empty-state h2 { display: none; }
+  .empty-state .mark { width: 56px; height: 56px; }
+  .empty-state .slogan {
+    margin-top: var(--sp-3);
+    font-size: var(--fs-2xl);
+    font-weight: var(--fw-semibold);
+    color: var(--text);
+    letter-spacing: 0.06em;
+    text-indent: 0.06em;
+    text-align: center;
+    line-height: 1.5;
+  }
+
+  /* 快捷入口：竖排胶囊（浅底、全圆角、线性小图标 + 一行字）。
+     点一下把这句话填进输入框（不直接发 —— 手机上误触的代价比桌面大）。 */
+  .empty-guide { grid-template-columns: 1fr; gap: 10px; }
+  .guide-pill {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    min-height: 48px;
+    padding: 0 16px;
+    border: none;
+    border-radius: 999px;
+    background: var(--panel-2);
+    color: var(--text);
+    font-size: var(--fs-base);
+    text-align: left;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .guide-pill svg { flex: none; color: var(--muted); }
+  .guide-pill span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .guide-pill:active { filter: brightness(0.93); }
+
+  .start-composer { margin-top: auto; }
+
+  /* ── 确认门（ConfirmModal）──────────────────────────────────
+     手机形状是底部弹层：贴底、可滚动、按钮拉大并排。它是三大核心功能之一，
+     必须一眼看到且点得到 —— 后端确认门没有超时，看不到就等于任务卡死。 */
+  .confirm-overlay { align-items: flex-end; }
+  .confirm-modal,
+  .confirm-modal.is-ask {
+    width: 100%;
+    max-width: 100%;
+    max-height: 92dvh;
+    display: flex;
+    flex-direction: column;
+    border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+    border-bottom: none;
+    animation: fade-up var(--t-base) var(--ease-standard);
+  }
+  .confirm-banner { flex: none; padding: var(--sp-3) var(--sp-4); flex-wrap: wrap; gap: 8px; }
+  .confirm-action { font-size: var(--fs-base); }
+  /* 主体可滚动：信赖选项 / 决策选项多起来时，390px 屏上原来会被直接截掉。 */
+  .confirm-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    padding: var(--sp-4) var(--sp-4) 0;
+  }
+  .confirm-target { max-height: 160px; }
+  .confirm-actions {
+    flex: none;
+    gap: 10px;
+    padding: var(--sp-3) var(--sp-4) calc(var(--sp-4) + env(safe-area-inset-bottom));
+  }
+  .confirm-actions .btn {
+    flex: 1 1 0;
+    min-height: 46px;
+    justify-content: center;
+    font-size: var(--fs-base);
+  }
+  .ask-tab { min-height: 44px; }
+  .trust-opt { min-height: 44px; align-items: center; }
+  .trust-opt input { width: 20px; height: 20px; }
+
+  /* ── 设置面板 ────────────────────────────────────────────────
+     桌面双栏 960px 在手机上放不下：改单列、导航横向滚动、占满全屏。 */
+  .settings-panel,
+  .settings-panel--wide {
+    width: 100%;
+    max-width: 100%;
+    height: 100dvh;
+    max-height: 100dvh;
+    flex-direction: column;
+    border-radius: 0;
+  }
+  .settings-nav {
+    width: 100%;
+    flex: none;
+    flex-direction: row;
+    gap: var(--sp-1);
+    padding: 8px 8px calc(8px + 0px);
+    padding-top: calc(8px + env(safe-area-inset-top));
+    overflow-x: auto;
+    overflow-y: hidden;
+    border-right: none;
+    border-bottom: 1px solid var(--border-soft);
+  }
+  .settings-nav-title { display: none; }
+  .settings-nav-foot { display: none; }
+  .settings-nav-item {
+    flex: none;
+    width: auto;
+    border-left: none;
+    border-bottom: 3px solid transparent;
+    border-radius: 0;
+    padding: 10px 12px;
+    min-height: 44px;
+    white-space: nowrap;
+  }
+  .settings-nav-item.active { border-bottom-color: var(--real); }
+  /* .settings-body 本身已是 flex:1 + overflow-y:auto，这里只需保证父级可收缩。 */
+  .settings-main { min-height: 0; }
+  .settings-body { padding: var(--sp-3) var(--sp-4) var(--sp-5); }
+  .settings-actions { padding-bottom: calc(var(--sp-3) + env(safe-area-inset-bottom)); }
+
+  /* ── 其它浮层 ────────────────────────────────────────────────
+     弹层在手机上要能滚动、按钮要够大。 */
+  .ctx-menu { min-width: 168px; }
+  .ctx-item { padding: 12px 12px; font-size: var(--fs-base); }
+  .menu-item,
+  .model-item { min-height: 44px; }
+  .toast-stack {
+    left: 12px;
+    right: 12px;
+    bottom: calc(12px + env(safe-area-inset-bottom));
+    max-width: none;
+  }
+  .icon-btn { width: 44px; height: 44px; }
+  .msg-action,
+  .answer-act { width: 40px; height: 40px; }
+  .about-card { width: calc(100vw - 24px); }
+  .about-grid { grid-template-columns: 1fr; }
+
+  @keyframes m-spin { to { transform: rotate(360deg); } }
+}

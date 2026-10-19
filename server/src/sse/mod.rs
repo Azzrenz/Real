@@ -175,6 +175,12 @@ pub fn routes() -> Router<AppState> {
     Router::new().route("/api/sessions/{id}/events", get(events))
 }
 
+/// GET /api/sessions/{id}/events 的查询参数。
+///
+/// ⚠️ 另可带 `?ticket=<一次性票据>`（**不在本结构里**，刻意）：前端用 `new EventSource()`，
+/// EventSource 不能自定义 header，故非回环来源可用 `POST /api/auth/sse-ticket` 换取
+/// 短时效、一次性、绑定会话 id 的票据走 URL。票据由 `routes::auth_guard` 在网关层消费
+/// （取出即失效），**长期 token 绝不放 URL**（会进日志/历史/代理）。
 #[derive(Debug, Deserialize)]
 pub struct StreamQuery {
     #[serde(default)]

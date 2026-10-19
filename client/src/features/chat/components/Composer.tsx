@@ -6,6 +6,7 @@ import { ModelPicker } from '../../settings/components/ModelPicker';
 import { useToastStore } from '../../../shared/store/toastStore';
 import { useSettings } from '../../settings/store/settingsStore';
 import { MAX_ATTACHMENTS, mergeAttachments, type Attachment } from '../lib/attachments';
+import { useIsMobile } from '../../../shared/lib/viewport';
 import './composer.css';
 
 /** Textarea max height - also the overflow line for pasted text: a paste that needs more room
@@ -18,6 +19,10 @@ const INPUT_H_MAX = 480;
  *  in composer.css: change one, change the other.
  */
 const INPUT_H_BASE = 84;
+
+/** 手机版的基线高度：84px 是给桌面三行输入留的，390px 屏上它吃掉太多竖向空间。
+ *  只改手机这一路，桌面仍走 INPUT_H_BASE。 */
+const INPUT_H_BASE_MOBILE = 48;
 
 /** Auto-grow ceiling: the box follows the text up to here, then scrolls. Kept well below
  *  INPUT_H_MAX (the paste-to-attachment line) and mirrored by `.chat-input-box textarea
@@ -98,6 +103,8 @@ export function Composer({
   sendLabelIdle,
 }: Props) {
   const t = useT();
+  const isMobile = useIsMobile();
+  const baseH = isMobile ? INPUT_H_BASE_MOBILE : INPUT_H_BASE;
   const [dragOver, setDragOver] = useState(false);
   const [skillsOpen, setSkillsOpen] = useState(false);
   const [skillRect, setSkillRect] = useState<DOMRect | null>(null);
@@ -135,10 +142,13 @@ export function Composer({
     const ta = document.querySelector<HTMLTextAreaElement>('.chat-input-box textarea');
     if (!ta || resizeH) return;
     ta.style.height = 'auto';
-    ta.style.height = `${Math.min(Math.max(ta.scrollHeight, INPUT_H_BASE), INPUT_H_GROW_MAX)}px`;
-  }, [value, resizeH]);
+    ta.style.height = `${Math.min(Math.max(ta.scrollHeight, baseH), INPUT_H_GROW_MAX)}px`;
+  }, [value, resizeH, baseH]);
 
   const startResize = (e: React.MouseEvent) => {
+    // 触屏上没有 mousemove，拖拽调高拿不到第二个事件 —— 手机上直接不做这件事
+    // （拖拽条本身也已被 mobile.css 隐藏）。
+    if (isMobile) return;
     e.preventDefault();
     const startY = e.clientY;
     const ta = (e.currentTarget.closest('.chat-input-box')?.querySelector('textarea') as HTMLTextAreaElement | null);
@@ -215,8 +225,8 @@ export function Composer({
             ))}
             <span className="compose-skill-hint">
               {pickedSkill.length > 1
-                ? t('本轮按这 {n} 个技能执行', { n: pickedSkill.length })
-                : t('本轮按此技能执行')}
+                ? t('已常驻 {n} 个技能：以后每轮自动带上', { n: pickedSkill.length })
+                : t('已常驻：以后每轮自动带上')}
             </span>
           </div>
         )}
@@ -251,8 +261,12 @@ export function Composer({
           value={value}
           placeholder={
             busy
-              ? t('任务运行中——输入文字按 Enter 插话（入队，下一轮自动生效）')
-              : t('描述任务或随便聊聊…（可拖入/粘贴文件作为附件）')
+              ? (isMobile
+                  ? t('打字后按 Enter 插话')
+                  : t('任务运行中——输入文字按 Enter 插话（入队，下一轮自动生效）'))
+              : (isMobile
+                  ? t('描述任务，或随便聊聊…')
+                  : t('描述任务或随便聊聊…（可拖入/粘贴文件作为附件）'))
           }
           onChange={(e) => onChange(e.target.value)}
           onKeyDown={onKeyDown}

@@ -3,6 +3,7 @@
 import { enSettings } from './en-settings';
 import { enTools } from './en-tools';
 import { enChat } from './en-chat';
+import { enMobile } from './en-mobile';
 
 export const en: Record<string, string> = {
   // ── Shell / title bar ────────────────────────────────────────────────
@@ -439,6 +440,12 @@ export const en: Record<string, string> = {
 
   // ── Manual batch 1: tool cards, MCP, skills, memory, tuning ──────────
   '· 第 {n} 次': ' · run {n}',
+  '第 {n} 轮': 'round {n}',
+  '在文件管理器里打开': 'Reveal in file manager',
+  '明细 {n} 条': '{n} detail rows',
+  '· {n} 在跑': ' · {n} running',
+  '· {n} 项已中断': ' · {n} interrupted',
+  '进程 {n} 个 · 合计 {m} MB': '{n} processes · {m} MB total',
   '正在{action}{suffix}': '{action}…{suffix}',
   '已{action}{suffix}': '{action}{suffix}',
   '{action}已取消{suffix}': '{action} cancelled{suffix}',
@@ -554,4 +561,6 @@ export const en: Record<string, string> = {
   // Tool-facing and chat-facing English: same split reasoning as en-settings.ts.
   ...enTools,
   ...enChat,
+  // Mobile (narrow-viewport) surfaces: pairing, mobile status bar, drawer entry points.
+  ...enMobile,
 };

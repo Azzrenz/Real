@@ -198,6 +198,45 @@ pub fn task_memory_path(workspace: &str, task_key: &str) -> PathBuf {
     task_dir(workspace, task_key).join("MEMORY.md")
 }
 
+/// **上一个任务**的记忆（跨会话接续用）：同工作区下最近一个「更早、且 `MEMORY.md` 非空」的任务。
+///
+/// 为什么必须有它：`task_key` 由**会话创建时刻**派生，所以每次新会话必然落进一个**全新空目录**
+/// ——上一轮那个任务的 `MEMORY.md` 就躺在隔壁，却被「本任务记忆（还没有）」这句话挡在视野之外。
+/// 模型于是从零开始，用户体感就是「**接不上上一对话**」。
+///
+/// `task_key` 形如 `20260925T155000+0800`，**字典序即时间序**，所以倒序找第一个非空的即可。
+/// 只取**更早**的（`< cur`）：接续的语义是"往前接"，不能拿还没发生的任务来续。
+/// 空文件 / 纯空白 = 那个任务没留下结论，继续往前找。
+fn prior_task_memory(workspace: &str, cur_task_key: &str) -> Option<(String, PathBuf, String)> {
+    let tasks = project_dir(workspace).join("tasks");
+    let mut keys: Vec<String> = std::fs::read_dir(&tasks)
+        .ok()?
+        .flatten()
+        .filter(|e| e.path().is_dir())
+        .map(|e| e.file_name().to_string_lossy().to_string())
+        .filter(|k| k.as_str() < cur_task_key && !k.starts_with('.'))
+        .collect();
+    keys.sort();
+    for k in keys.into_iter().rev() {
+        let p = task_memory_path(workspace, &k);
+        if let Some(t) = read_text(&p) {
+            if !t.trim().is_empty() {
+                return Some((k, p, t));
+            }
+        }
+    }
+    None
+}
+
+/// 把多行正文整体缩进，让注入段里的层次一眼可辨（正文不会被误读成指令行）。
+fn indent_block(text: &str, n: usize) -> String {
+    let pad = " ".repeat(n);
+    text.lines()
+        .map(|l| format!("{pad}{l}"))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 /// 长期知识目录：`…/longterm/`
 pub fn longterm_dir(workspace: &str) -> PathBuf {
     project_dir(workspace).join("longterm")
@@ -362,11 +401,31 @@ pub fn build_journal_prompt(workspace: &str, task_key: &str, include_longterm: b
                 "  · 本任务记忆 {}（{n} / {MEMORY_MAX_CHARS} 字符）{flag}\n",
                 mem.display()
             ));
+            // B：正文直接附上（沿用同一个字符上限）——省掉"为了回忆再 read 一次"的往返。
+            // 只报字符数不给正文，等于把模型赶去读文件，而这正是要消灭的动作。
+            let body = t.trim();
+            if !body.is_empty() {
+                s.push_str(&format!(
+                    "     正文（**已在上面，不必再 read**）：\n{}\n",
+                    indent_block(&crate::agent::plan::truncate(body, MEMORY_MAX_CHARS), 6)
+                ));
+            }
         }
-        None => s.push_str(&format!(
-            "  · 本任务记忆 {}（还没有；首次写入时新建，上限 {MEMORY_MAX_CHARS} 字符）\n",
-            mem.display()
-        )),
+        None => {
+            s.push_str(&format!(
+                "  · 本任务记忆 {}（还没有；首次写入时新建，上限 {MEMORY_MAX_CHARS} 字符）\n",
+                mem.display()
+            ));
+            // A：跨会话接续 —— 本任务是全新的，但同工作区往往还留着上一个任务的记忆。
+            // 不把它接上，模型就从零开始，用户看到的就是「接不上上一对话」。
+            if let Some((k, p, t)) = prior_task_memory(&ws, task_key) {
+                s.push_str(&format!(
+                    "  · ⤴ **上一个任务（{k}）留下的记忆**（本任务是它的后续；正文已附，**不必再 read**）：{}\n{}\n",
+                    p.display(),
+                    indent_block(&crate::agent::plan::truncate(t.trim(), MEMORY_MAX_CHARS), 6)
+                ));
+            }
+        }
     }
     // 产物分类（唯一事实源 TASK_SUBDIRS）：**仅首次挂载时逐条列出判据**——
     if first_touch {
@@ -416,6 +475,15 @@ pub fn build_journal_prompt(workspace: &str, task_key: &str, include_longterm: b
             "- 做完一件实事 → 往**本任务**今天的日志追加一条（时间 · 做了什么 → 产出落在哪 → 下一步）。\n",
         );
     }
+    // C：记忆结构化 —— `MEMORY.md` 不是散文，每条结论都要**落在具体锚点上**。
+    // 这份注入每轮重建，所以这里也每轮讲：它是**写入侧的编码规范**，
+    // 只在首轮提一句的话，压过几轮就淡了，而写下来的东西是要给下一个任务用的。
+    s.push_str(
+        "- **往 `MEMORY.md` / 日志里写东西就落锚点**（它们是给下一个任务看的，不是给自己看的）：\n  \
+         写成 `锚点 → 结论`，锚点用**文件路径 / 符号名 / 行号（`:295`）/ 命令或报错原文**；\n  \
+         例：`journal.rs:295 build_journal_prompt → 只报字符数不给正文，逼模型再 read 一次`。\n  \
+         **别写「优化了一下记忆注入逻辑」这种没有落点的散文** —— 回头谁也查不到，等于没记。\n",
+    );
     s
 }
 

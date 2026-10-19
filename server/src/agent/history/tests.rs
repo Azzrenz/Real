@@ -2396,8 +2396,12 @@ mod token_ceiling_tests {
     fn keeps_prefix_as_long_as_possible() {
         let cap = cap_tokens();
         let body = "x".repeat(2_000);
-        // 200 轮 × 2 条 ≈ 40 万字节 ⇒ est ≈ 11 万 token > cap（≈7.3 万）
-        let mut items: Vec<InputItem> = (0..200)
+        // ⚠️ 轮数**按 cap 动态反推**，不再硬编码 —— 原先写死 200 轮（≈11 万 token），
+        // 2026-09-25 `SEND_SAFE_PERMILLE` 由 70‰ 提到 150‰（cap 73.4K→157K）后就不越线了，
+        // 于是“样本必须越线”的守卫先炸。改成 2×cap 的规模，日后调阈值自动跟随。
+        let per_round_toks = est_tokens_of(2_000 + 16).max(1);
+        let rounds = ((cap * 2) / per_round_toks).max(2);
+        let mut items: Vec<InputItem> = (0..rounds)
             .flat_map(|i| {
                 [
                     InputItem::user_message(&format!("第{i}轮 {body}")),

@@ -1128,6 +1128,10 @@ pub async fn update_message_item_json(
 }
 
 /// 只替换 `item_json.content`，**保留其余键**（如 `attachments`）。
+/// ⚠️ 09-25：**主流程已不再调用**（当轮帧不再写回库，见 `workflow::spin` —— 那一写一回
+/// 正是「历史中段改写」的源头，会把前缀缓存整段打碎）。保留供 `agent::history::tests`
+/// 的回归用例，以及将来"就地把某条消息换成另一形态"的场景。
+#[allow(dead_code)]
 pub async fn update_message_item_content(
     pool: &SqlitePool,
     message_id: &str,

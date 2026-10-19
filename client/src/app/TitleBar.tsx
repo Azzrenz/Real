@@ -6,6 +6,9 @@ import { useEffect, useRef, useState } from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { Icon } from '../shared/ui/icons';
 import { useT } from '../shared/i18n';
+import { useIsMobile } from '../shared/lib/viewport';
+import { inTauri } from '../shared/lib/tauri';
+import { remoteHostLabel } from '../shared/lib/endpoint';
 import brandLogo from '../shared/assets/brand.png';
 
 interface ViewToggle {
@@ -17,14 +20,26 @@ interface TitleBarProps {
   viewToggle?: ViewToggle;
   onHome?: () => void;
   onOpenSettings?: () => void;
+  /** 手机版：左侧汉堡按钮 → 打开任务抽屉。桌面不传（不渲染该按钮）。 */
+  onOpenDrawer?: () => void;
+  drawerOpen?: boolean;
+  /** 手机版：有未处理的确认门 —— 汉堡上点一颗提示点（锁屏/切后台后唯一的"回来看看"信号）。 */
+  alert?: boolean;
 }
 
-export function TitleBar({ viewToggle, onHome, onOpenSettings }: TitleBarProps) {
+export function TitleBar({ title, viewToggle, onHome, onOpenSettings, onOpenDrawer, drawerOpen, alert }: TitleBarProps) {
   const t = useT();
+  const isMobile = useIsMobile();
+  // Tauri 窗口 API 只在壳里存在：手机浏览器里 `getCurrentWindow()` 会直接抛，
+  // 所以先判壳再调，保证这些按钮（在手机上已被 CSS 隐藏）即使被点到也不会炸。
   const win = () => getCurrentWindow();
-  const minimize = () => win().minimize().catch(() => undefined);
-  const toggleMax = () => win().toggleMaximize().catch(() => undefined);
-  const closeToTray = () => win().hide().catch(() => undefined);
+  const minimize = () => { if (inTauri()) win().minimize().catch(() => undefined); };
+  const toggleMax = () => { if (inTauri()) win().toggleMaximize().catch(() => undefined); };
+  const closeToTray = () => { if (inTauri()) win().hide().catch(() => undefined); };
+
+  // 手机版标题栏第二行：我连的是哪台电脑。遥控器要能一眼看清连到哪儿，
+  // 桌面（回环）不必显示。
+  const remoteHost = remoteHostLabel();
 
   const [openMenu, setOpenMenu] = useState<'edit' | 'help' | null>(null);
   const [aboutOpen, setAboutOpen] = useState(false);
@@ -60,6 +75,20 @@ export function TitleBar({ viewToggle, onHome, onOpenSettings }: TitleBarProps) 
 
   return (
     <div className="titlebar">
+      {/* 手机版：左侧常显汉堡。桌面那套「hover 才露出的热区箭头」在触屏上永远看不见，
+          所以手机上不靠热区，直接给一个 44×44 的常驻按钮。 */}
+      {isMobile && (
+        <button
+          type="button"
+          className="m-menu-btn"
+          onClick={() => onOpenDrawer?.()}
+          aria-label={alert ? t('打开任务列表（有一步等你审批）') : t('打开任务列表')}
+          aria-expanded={!!drawerOpen}
+        >
+          <Icon name="list" size={22} />
+          {alert && <span className="m-menu-dot" aria-hidden />}
+        </button>
+      )}
       <button
         type="button"
         className="titlebar-brand"
@@ -71,6 +100,12 @@ export function TitleBar({ viewToggle, onHome, onOpenSettings }: TitleBarProps) 
         <img src={brandLogo} alt="Real" className="titlebar-logo brand-mark" />
         <b>Real Agent</b>
       </button>
+      {isMobile && (
+        <div className="m-titlebar-mid">
+          <span className="m-titlebar-title">{title || 'Real'}</span>
+          {remoteHost && <span className="m-titlebar-sub">{remoteHost}</span>}
+        </div>
+      )}
       <nav className="titlebar-menu" ref={menuRef}>
         <div className={`titlebar-menu-item-wrap${openMenu === 'edit' ? ' open' : ''}`}>
           <button

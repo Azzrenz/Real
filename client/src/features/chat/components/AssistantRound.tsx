@@ -27,6 +27,7 @@ export const AssistantRound = memo(function AssistantRound({
   running,
   live,
   phaseHint,
+  compact,
   onRegen: _onRegen,
 }: {
   round: Round;
@@ -34,6 +35,9 @@ export const AssistantRound = memo(function AssistantRound({
   live?: boolean;
   phaseHint?: string;
   sessionId?: string;
+  /** 手机版：详细节点默认收起，只留一行「在做什么」，点开才铺开。
+   *  默认 false ⇒ 桌面路径一字未变。 */
+  compact?: boolean;
   onRegen?: () => void;
 }) {
   const nodes: ChatNode[] = round.nodes ?? [];
@@ -50,7 +54,8 @@ export const AssistantRound = memo(function AssistantRound({
   const modelLabels = useSettings((s) => s.modelLabels);
   const currentModel = round.totals?.model || settingsModel;
  const aborted = round.status === 'cancelled' || round.status === 'error' || round.status === 'interrupted';
- const [showProcess, setShowProcess] = useState(aborted);
+ // 手机上详细过程默认收起（点一行才铺开）；桌面维持原行为（仅异常轮默认展开）。
+ const [showProcess, setShowProcess] = useState(aborted || !!compact);
   useEffect(() => {
     if (aborted) setShowProcess(true);
   }, [aborted]);
@@ -289,7 +294,31 @@ export const AssistantRound = memo(function AssistantRound({
         </div>
       ) : (
         <>
-          {renderNodes()}
+          {compact ? (
+            /* 手机版：正在跑的这一轮也收成一行，细节点开才看。信息量交给顶部状态条，
+               这里只负责「想细看时能展开」。 */
+            <div className="done-process">
+              <button
+                className="done-process-head"
+                onClick={() => setShowProcess((v) => !v)}
+                aria-expanded={showProcess}
+                title={showProcess ? t('收起执行过程') : t('展开执行过程')}
+              >
+                <Icon name="chevron" size={14} className={`flow-row-caret${showProcess ? ' open' : ''}`} />
+                <span className="done-process-label">{t('执行中')}</span>
+                {metaParts.length > 0 && (
+                  <span className="done-process-meta">{metaParts.join(' · ')}</span>
+                )}
+              </button>
+              {showProcess && (
+                <div className="done-process-body">
+                  {renderNodes()}
+                </div>
+              )}
+            </div>
+          ) : (
+            renderNodes()
+          )}
           {round.notice && (
             <div className="live-activity" role="status" title={round.notice}>
               <span className="live-activity-dot" aria-hidden />

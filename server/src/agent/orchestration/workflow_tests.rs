@@ -1,5 +1,13 @@
 //! workflow.rs 的测试外置（设计决定：workflow.rs 是主循环基础骨架文件，
+// 这几条 glob 供**下方各测试子模块**的 `use super::*` 穿透使用；
+// 编译器不把「glob 被下游 glob 消费」算作使用，故显式放行（非死导入）。
+#![allow(unused_imports)]
 use super::*;
+// 已归位的三个子域：测试直接引用，不经 workflow 转发。
+use crate::agent::orchestration::inject::*;
+use crate::agent::orchestration::stall::*;
+use crate::agent::orchestration::text::*;
+use crate::agent::orchestration::tooling::*;
 
 #[cfg(test)]
 mod upstream_unavailable_tests {

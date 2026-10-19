@@ -14,20 +14,25 @@ const REQUEST_EVENT = 'dock:request-sync';
 export interface ChangedFile {
   path: string;
   name: string;
-
   tool: string;
+  /**
+   * When this write landed (ISO, straight off the tool card). The artifacts panel sorts and
+   * fades by it: without a timestamp every file looked equally recent, so the list stayed in
+   * call order and never let older output recede.
+   */
+  at?: string;
+  /** Last-seen order. Fallback for entries the backend sent without a timestamp. */
+  step: number;
 }
 
 export interface DockSync {
-
   task: { title: string; startedAt: string } | null;
-
   files: ChangedFile[];
-
   lang: Lang;
-
-  /** The main window's colour theme, mirrored into the dock's own store: separate windows have
-   *  separate documents and stores, so a theme flipped over there does not arrive on its own. */
+  /**
+   * The main window's colour theme, mirrored into the dock's own store: separate windows have
+   * separate documents and stores, so a theme flipped over there does not arrive on its own.
+   */
   theme: RealTheme;
 }
 
@@ -36,19 +41,37 @@ interface NodeShape {
   name?: string;
   path?: string;
   status?: string;
+  startedAt?: string;
 }
 
+/**
+ * Files this task actually put on disk, newest last write first.
+ *
+ * A repeated write to the same path keeps only its **latest** landing: the panel is a view of
+ * what exists now, not a log of every touch, so an older write must not hold the slot (and the
+ * older timestamp) of a file that has since been rewritten.
+ */
 export function collectChangedFiles(nodes: NodeShape[]): ChangedFile[] {
-  const seen = new Set<string>();
-  const out: ChangedFile[] = [];
+  const byPath = new Map<string, ChangedFile>();
+  let step = 0;
   for (const n of nodes) {
+    step += 1;
     if (n?.type !== 'tool' || !n.name || !n.path) continue;
     if (!WRITE_TOOLS.has(n.name) || !LANDED.has(n.status ?? '')) continue;
-    if (seen.has(n.path)) continue;
-    seen.add(n.path);
-    out.push({ path: n.path, name: baseName(n.path), tool: n.name });
+    byPath.set(n.path, {
+      path: n.path,
+      name: baseName(n.path),
+      tool: n.name,
+      at: n.startedAt,
+      step,
+    });
   }
-  return out;
+  return [...byPath.values()].sort((a, b) => {
+    const ta = a.at ? Date.parse(a.at) : Number.NaN;
+    const tb = b.at ? Date.parse(b.at) : Number.NaN;
+    if (!Number.isNaN(ta) && !Number.isNaN(tb) && ta !== tb) return tb - ta;
+    return b.step - a.step;
+  });
 }
 
 function baseName(path: string): string {
@@ -108,10 +131,8 @@ export function useDockSync(): DockSync | null {
   const [data, setData] = useState<DockSync | null>(null);
 
   useEffect(() => {
-
     if (!inTauri()) return;
     const pending = listen<DockSync>(PUSH_EVENT, (e) => {
-
       if (e.payload.lang && e.payload.lang !== useLang.getState().lang) {
         useLang.getState().setLang(e.payload.lang);
       }

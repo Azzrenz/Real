@@ -3,19 +3,58 @@
 use crate::config::McpServerConfig;
 use crate::db::repos;
 use crate::state::AppState;
-use axum::extract::{Path, State};
+use axum::extract::{ConnectInfo, Path, State};
+use axum::http::HeaderMap;
 use axum::Json;
 use serde::Deserialize;
 use serde_json::{json, Value};
+use std::net::SocketAddr;
 
 /// GET /api/mcp/servers —— 运行状态 + 已保存配置（配置用于界面回填，编辑/删除需要它）
-pub async fn list(State(state): State<AppState>) -> Json<Value> {
+pub async fn list(
+    State(state): State<AppState>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+) -> Json<Value> {
     let servers = state.registry.mcp_server_status();
     let saved: Value = match repos::get_setting(&state.pool, "mcp_servers").await {
         Ok(Some(raw)) => serde_json::from_str(&raw).unwrap_or_else(|_| json!([])),
         _ => json!([]),
     };
+    // 远程（非回环）只回请求头**键名**、抹掉值：`headers` 里常放 `Authorization` 等密钥，
+    // 不该随 GET 泄漏给已配对的手机。本机（回环）原样返回 —— 桌面零变化。
+    // 安全前提：MCP 写入面（`PUT /apply/reconnect`）是**仅本机**（见 `is_local_only`），
+    // 远程没有写入口 ⇒ 抹掉值不会经「读 → 改 → 写」把密钥写空（见 `redact_mcp_headers`）。
+    let remote = !crate::routes::auth_guard::is_loopback_request(Some(addr), &headers);
+    let saved = redact_mcp_headers(saved, remote);
     Json(json!({ "servers": servers, "saved": saved }))
+}
+
+/// 远程视图的请求头脱敏：把每条配置里 `headers` 的值抹成空串，**只留键名**。
+/// 非远程 / 结构不是数组 ⇒ 原样返回（桌面零变化）。
+fn redact_mcp_headers(saved: Value, remote: bool) -> Value {
+    if !remote {
+        return saved;
+    }
+    match saved {
+        Value::Array(items) => Value::Array(
+            items
+                .into_iter()
+                .map(|item| match item {
+                    Value::Object(mut obj) => {
+                        if let Some(Value::Object(h)) = obj.get_mut("headers") {
+                            for v in h.values_mut() {
+                                *v = Value::String(String::new());
+                            }
+                        }
+                        Value::Object(obj)
+                    }
+                    other => other,
+                })
+                .collect(),
+        ),
+        other => other,
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -108,3 +147,7 @@ pub async fn reconnect(
         Err(e) => Json(json!({ "ok": false, "error": e })),
     }
 }
+
+#[cfg(test)]
+#[path = "mcp_tests.rs"]
+mod mcp_tests;

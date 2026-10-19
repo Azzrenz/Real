@@ -12,9 +12,15 @@ import { ConfirmModal } from './app/ConfirmModal';
 import { Toast } from './shared/ui/Toast';
 import { ErrorBoundary } from './app/ErrorBoundary';
 import { TitleBar } from './app/TitleBar';
+import { PairPage } from './features/auth/components/PairPage';
+import { useAuthStore } from './features/auth/store/authStore';
 import { Icon, type IconName } from './shared/ui/icons';
 import { useSessionStore } from './features/sessions/store/sessionStore';
+import { useChatStore } from './features/chat/store/chatStore';
 import { useSettings } from './features/settings/store/settingsStore';
+import { useIsMobile, useAppHeight } from './shared/lib/viewport';
+import { remoteHostLabel } from './shared/lib/endpoint';
+import { inTauri } from './shared/lib/tauri';
 import { useT } from './shared/i18n';
 import { openExternal } from './shared/lib/openExternal';
 
@@ -46,6 +52,16 @@ const GUIDE: Array<{ k: string; v: string; icon: IconName }> = [
   },
 ];
 
+/** 手机版的快捷入口：遥控器场景下「我现在能让你做什么」。
+ *  桌面那四条讲的是「这台机器怎么操作」（鼠标移到最左边…），手机上一句都用不上。
+ *  与 GUIDE 一样只放中文原文当 key，渲染时再 t()。 */
+const GUIDE_MOBILE: Array<{ k: string; icon: IconName }> = [
+  { icon: 'spark', k: '这个项目现在是什么状态？' },
+  { icon: 'play', k: '跑一遍测试，有失败就修' },
+  { icon: 'doc', k: '把最近的改动总结一下' },
+  { icon: 'wrench', k: '解释一下刚才那个报错' },
+];
+
 export default function App() {
   const t = useT();
   const { sessions, currentId, fetchSessions, selectSession, createSession, deleteSession, renameSession, error } =
@@ -57,6 +73,19 @@ export default function App() {
   const loadFromBackend = useSettings((s) => s.loadFromBackend);
   const [booting, setBooting] = useState(true);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const isMobile = useIsMobile();
+  // 手机上用 visualViewport 的真实可见高度驱动 `--app-h`，软键盘弹起时输入框不被埋。
+  // 窄屏才会写入这个变量，桌面（≥900px）连设置动作都不会发生。
+  useAppHeight();
+  const authStatus = useAuthStore((s) => s.status);
+  // 有未处理的确认门：手机端要在汉堡上点一颗提示点（审批是核心动作，锁屏后它是唯一的召唤）。
+  const hasPendingConfirm = useChatStore((s) => !!s.confirm);
+  // 手机端抽屉底部的连接信息："我连的是哪台电脑"。桌面（回环）为空。
+  const connHost = isMobile ? remoteHostLabel() : '';
+  const sessionTitle = useSessionStore((s) =>
+    s.currentId ? (s.sessions.find((x) => x.id === s.currentId)?.title ?? '') : '',
+  );
   const [startText, setStartText] = useState('');
   const [startAtts, setStartAtts] = useState<Attachment[]>([]);
   const [startSkills, setStartSkills] = useState<string[]>([]);
@@ -93,10 +122,20 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    loadFromBackend().catch(() => undefined);
-    // No auto-open of the last task: launch lands on the start page, which is where the
-    // guide lives. Picking a task stays an explicit move (task list in the title bar).
-    fetchSessions().finally(() => setBooting(false));
+    // 先探鉴权，再拉数据：手机上未配对时后端对 /api/* 统一回 404，直接 fetchSessions
+    // 只会刷出一屏「请求失败」重试，用户完全不知道该干什么。探明「没配对」就停在配对页。
+    const boot = async () => {
+      await useAuthStore.getState().probe();
+      if (!inTauri() && useAuthStore.getState().status === 'unpaired') {
+        setBooting(false);
+        return;
+      }
+      loadFromBackend().catch(() => undefined);
+      // No auto-open of the last task: launch lands on the start page, which is where the
+      // guide lives. Picking a task stays an explicit move (task list in the title bar).
+      fetchSessions().finally(() => setBooting(false));
+    };
+    void boot();
   }, [fetchSessions, loadFromBackend]);
 
   useEffect(() => {
@@ -154,6 +193,12 @@ export default function App() {
     void newTask(text, atts).finally(() => setStarting(false));
   };
 
+  // 手机未配对：后端对 `/api/*` 统一回 404（不暴露服务存在）⇒ 业务界面拿不到任何数据，
+  // 停在配对页是唯一有意义的状态。桌面命中的是回环免鉴权，永远走不到这里。
+  if (!inTauri() && authStatus === 'unpaired') {
+    return <PairPage />;
+  }
+
   if (booting) {
     return (
       <div className="boot">
@@ -165,9 +210,23 @@ export default function App() {
   }
 
   return (
-    <div className={`app${sidebarCollapsed ? ' sidebar-collapsed' : ''}`}>
-      <TitleBar onOpenSettings={() => setSettingsOpen(true)} />
+    <div className={`app${sidebarCollapsed ? ' sidebar-collapsed' : ''}${isMobile && drawerOpen ? ' drawer-open' : ''}`}>
+      <TitleBar
+        onOpenSettings={() => setSettingsOpen(true)}
+        title={sessionTitle}
+        onOpenDrawer={() => setDrawerOpen((v) => !v)}
+        drawerOpen={drawerOpen}
+        alert={hasPendingConfirm}
+      />
       <div className="app-body">
+        {isMobile && drawerOpen && (
+          <button
+            type="button"
+            className="drawer-backdrop"
+            aria-label={t('关闭任务列表')}
+            onClick={() => setDrawerOpen(false)}
+          />
+        )}
         <button
           type="button"
           className="sidebar-hotzone"
@@ -185,10 +244,18 @@ export default function App() {
         <SessionSidebar
           sessions={sessions}
           currentId={currentId}
-          onSelect={selectSession}
-          onNew={() => void newTask()}
+          onSelect={(id) => {
+            void selectSession(id);
+            setDrawerOpen(false);
+          }}
+          onNew={() => {
+            void newTask();
+            setDrawerOpen(false);
+          }}
           onDelete={deleteSession}
           onRename={renameSession}
+          onOpenSettings={isMobile ? () => { setDrawerOpen(false); setSettingsOpen(true); } : undefined}
+          connHost={connHost}
         />
         <main className="main">
           {error && <div className="banner-error" role="alert">{error}</div>}
@@ -214,15 +281,30 @@ export default function App() {
                   </div>
 
                   <div className="empty-guide">
-                    {GUIDE.map((g) => (
-                      <div className="guide-card" key={g.k}>
-                        <div className="guide-head">
-                          <Icon name={g.icon} size={15} />
-                          <span className="guide-k">{t(g.k)}</span>
-                        </div>
-                        <p className="guide-v">{t(g.v)}</p>
-                      </div>
-                    ))}
+                    {isMobile
+                      ? GUIDE_MOBILE.map((g) => (
+                          <button
+                            type="button"
+                            className="guide-pill"
+                            key={g.k}
+                            onClick={() => {
+                              setStartText(t(g.k));
+                              startInputRef.current?.focus();
+                            }}
+                          >
+                            <Icon name={g.icon} size={17} />
+                            <span>{t(g.k)}</span>
+                          </button>
+                        ))
+                      : GUIDE.map((g) => (
+                          <div className="guide-card" key={g.k}>
+                            <div className="guide-head">
+                              <Icon name={g.icon} size={15} />
+                              <span className="guide-k">{t(g.k)}</span>
+                            </div>
+                            <p className="guide-v">{t(g.v)}</p>
+                          </div>
+                        ))}
                   </div>
 
                   {/* One composer for the start page and for a task: drag/paste attachments, model
@@ -261,19 +343,24 @@ export default function App() {
           )}
         </main>
         {/* Mirrors .sidebar-hotzone on the opposite edge: the right dock opens from a hover
-            affordance at the seam, not from a permanent button in the toolbar. */}
-        <button
-          type="button"
-          className="dock-hotzone"
-          onMouseDown={(e) => e.preventDefault()}
-          onClick={() => void invoke('open_dock_window')}
-          title={t('打开右侧栏')}
-          aria-label={t('打开右侧栏')}
-        >
-          <span className="hz-arrow" aria-hidden="true">
-            <Icon name="chevron" size={19} strokeWidth={2.6} />
-          </span>
-        </button>
+            affordance at the seam, not from a permanent button in the toolbar.
+            手机版不渲染：右侧 Dock 是独立的 Tauri 窗口，浏览器里根本没有对象可开。 */}
+        {!isMobile && (
+          <button
+            type="button"
+            className="dock-hotzone"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => {
+              if (inTauri()) void invoke('open_dock_window');
+            }}
+            title={t('打开右侧栏')}
+            aria-label={t('打开右侧栏')}
+          >
+            <span className="hz-arrow" aria-hidden="true">
+              <Icon name="chevron" size={19} strokeWidth={2.6} />
+            </span>
+          </button>
+        )}
       </div>
       {settingsOpen && <SettingsPanel onClose={() => setSettingsOpen(false)} />}
  {/* Global layers: danger-op confirmation must stay visible even after switching

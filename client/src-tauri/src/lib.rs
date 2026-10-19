@@ -107,7 +107,8 @@ pub fn run() {
             reveal_in_folder,
             open_external_path,
             git_state,
-            git_commit
+            git_commit,
+            progress_index
         ])
         // 窗口事件分三路：
         // - main：关闭改为隐藏到托盘（不退出进程）；移动 / 改尺寸时把侧栏吸附过去。
@@ -803,6 +804,26 @@ async fn read_preview_bytes(path: String) -> Result<Vec<u8>, String> {
 async fn read_preview_text(path: String) -> Result<Option<String>, String> {
     let bytes = std::fs::read(&path).map_err(|e| format!("读取失败：{e}"))?;
     Ok(String::from_utf8(bytes).ok())
+}
+
+/// 长活动进度的**全局索引**：`%APPDATA%/real-agent/progress_index.json`。
+///
+/// 长活上报进度（`progress.py`）时自己把快照目录登记进来，所以面板**不必让用户手填路径**：
+/// 读一次索引就知道机器上现在有哪些活在跑、分别在哪个工作区。返回原文，没有就 `None`。
+#[tauri::command]
+async fn progress_index() -> Result<Option<String>, String> {
+    let base = std::env::var("APPDATA")
+        .ok()
+        .map(std::path::PathBuf::from)
+        .or_else(|| std::env::var("HOME").ok().map(|h| std::path::PathBuf::from(h).join(".config")))
+        .ok_or_else(|| "取不到 APPDATA".to_string())?;
+    let p = base.join("real-agent").join("progress_index.json");
+    if !p.exists() {
+        return Ok(None);
+    }
+    std::fs::read(&p)
+        .map(|b| String::from_utf8(b).ok())
+        .map_err(|e| format!("读取失败：{e}"))
 }
 
 /// 文件树里的一行。字段名对着前端 `FileEntry` 逐字对应。

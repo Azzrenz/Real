@@ -196,6 +196,11 @@ pub const DEF_STALL_DRY_ROUNDS: u32 = 30;
 pub const DEF_STALL_MIN_ROUNDS: u32 = 20;
 /// 交账宽限：触底后先注「交账指令」再收口的缓冲轮数（0 = 触底即停，即原行为）
 pub const DEF_STALL_GRACE_ROUNDS: u32 = 3;
+/// 久探不产档：任务**有过改动**、且一直在读新东西（`stall_count` 不涨），
+/// 但距上次动手已满此轮数 ⇒ 注入一次「该动手了」提醒（**只提醒，不停机**）。
+/// 这是补一个既有六档盖不住的窟窿：模型每轮读不同文件时 `stall_count` 恒为 0，
+/// 「只读不写」永远不会被任何档判到，会一路烧到轮次上限。
+pub const DEF_STALL_IDLE_ROUNDS: u32 = 15;
 
 pub struct Tuning {
     /// 收敛循环最大轮数（1..=200；env REAL_MAX_ROUNDS；默认 `DEF_MAX_ROUNDS`）
@@ -244,6 +249,8 @@ pub struct Tuning {
     pub stall_min_rounds: AtomicU32,
     /// 止损·交账宽限（触底后先收尾再停的缓冲轮数；env REAL_STALL_GRACE_ROUNDS；默认 `DEF_STALL_GRACE_ROUNDS`）
     pub stall_grace_rounds: AtomicU32,
+    /// 止损·久探不产档（有过改动却久未动手的提醒轮数；env REAL_STALL_IDLE_ROUNDS；默认 `DEF_STALL_IDLE_ROUNDS`）
+    pub stall_idle_rounds: AtomicU32,
 }
 
 static TUNING: Tuning = Tuning {
@@ -268,6 +275,7 @@ static TUNING: Tuning = Tuning {
     stall_dry_rounds: AtomicU32::new(DEF_STALL_DRY_ROUNDS),
     stall_min_rounds: AtomicU32::new(DEF_STALL_MIN_ROUNDS),
     stall_grace_rounds: AtomicU32::new(DEF_STALL_GRACE_ROUNDS),
+    stall_idle_rounds: AtomicU32::new(DEF_STALL_IDLE_ROUNDS),
     retire_warm_secs: std::sync::atomic::AtomicI64::new(DEF_RETIRE_WARM_SECS),
     retire_cold_secs: std::sync::atomic::AtomicI64::new(DEF_RETIRE_COLD_SECS),
 };
@@ -303,6 +311,7 @@ pub struct TuningSnapshot {
     pub stall_dry_rounds: u32,
     pub stall_min_rounds: u32,
     pub stall_grace_rounds: u32,
+    pub stall_idle_rounds: u32,
 }
 
 pub fn tuning_snapshot() -> TuningSnapshot {
@@ -327,6 +336,7 @@ pub fn tuning_snapshot() -> TuningSnapshot {
         stall_dry_rounds: t.stall_dry_rounds.load(Ordering::Relaxed),
         stall_min_rounds: t.stall_min_rounds.load(Ordering::Relaxed),
         stall_grace_rounds: t.stall_grace_rounds.load(Ordering::Relaxed),
+        stall_idle_rounds: t.stall_idle_rounds.load(Ordering::Relaxed),
     }
 }
 
@@ -352,6 +362,7 @@ pub fn tuning_defaults() -> TuningSnapshot {
         stall_dry_rounds: DEF_STALL_DRY_ROUNDS,
         stall_min_rounds: DEF_STALL_MIN_ROUNDS,
         stall_grace_rounds: DEF_STALL_GRACE_ROUNDS,
+        stall_idle_rounds: DEF_STALL_IDLE_ROUNDS,
     }
 }
 
@@ -395,6 +406,10 @@ pub fn init_tuning_from_env() {
     );
     t.stall_grace_rounds.store(
         env_u32("REAL_STALL_GRACE_ROUNDS", DEF_STALL_GRACE_ROUNDS, 0, 20),
+        Ordering::Relaxed,
+    );
+    t.stall_idle_rounds.store(
+        env_u32("REAL_STALL_IDLE_ROUNDS", DEF_STALL_IDLE_ROUNDS, 1, 200),
         Ordering::Relaxed,
     );
     // 保留 env 能力（面板已撤）：它仍是 L3 硬顶的 token 路线。

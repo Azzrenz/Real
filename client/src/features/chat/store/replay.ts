@@ -14,6 +14,12 @@ import {
 import { LEAD_PUNCT, narTail } from '../narration/pipeline';
 import { t } from '../../../shared/i18n';
 
+/// 历史回放时保留的思考流条数（最近 N 条）。
+/// `reasoning`/`thinking` 占事件总量约七成（实测「0928国庆大环游」11,804 条里占 8,374），
+/// 而前端默认把它们折叠在「深度思考」里 ⇒ 打开会话时全量重放等于把时间花在用户看不到的内容上。
+/// 调大 = 更完整但更慢；设成 `Number.POSITIVE_INFINITY` 即恢复全量回放。
+const REPLAY_THINK_TAIL = 800;
+
 export function createReplay(
   set: (partial: Partial<ChatStoreState>) => void,
   get: () => ChatStoreState,
@@ -32,8 +38,14 @@ export function createReplay(
       replaying: { ...get().replaying, [sessionId]: true },
     });
     try {
+      // ★ 分层回放（09-25）：只重放最近 REPLAY_THINK_TAIL 条思考流，更早的整条跳过；
+      //   message/tool/complete 骨架事件一概不动 ⇒ 轮次结构/工具链/终态不受影响。
+      const thinkTail = new Set(events.slice(-REPLAY_THINK_TAIL).map((ev) => ev.seq));
       for (const ev of events) {
         try {
+          if ((ev.kind === 'reasoning' || ev.kind === 'thinking') && !thinkTail.has(ev.seq)) {
+            continue;
+          }
           get().applyEvent(sessionId, ev);
         } catch (err) {
           console.warn("[replay] 事件还原失败，跳过", ev?.kind, err);
@@ -50,7 +62,7 @@ export function createReplay(
     delete narTail[sessionId];
     const msgs = (messages ?? [])
       .slice()
-      .sort((a, b) => a.created_at.localeCompare(b.created_at));
+      /* 顺序 = 后端 rowid 插入序，不再二次排序（created_at 两种格式混排，localeCompare 必错位） */;
     const tcByStep: Record<string, ToolCall> = {};
     for (const tc of (toolCalls ?? [])) {
       if (tc && tc.step_id) tcByStep[tc.step_id] = tc;

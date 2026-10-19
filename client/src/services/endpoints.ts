@@ -35,6 +35,15 @@ export const EP = {
   /** Reveal a path in the OS file manager (clicking a filename on a tool card). */
   reveal: () => '/api/reveal',
 
+  auth: {
+    /** 换设备 token（唯一未鉴权入口；配对页直接对绝对地址发，不走这里的 http 封装）。 */
+    pair: () => '/api/auth/pair',
+    /** 已配对设备列表：既用来列设备，也当「我的 token 还有效吗」的探针。 */
+    devices: () => '/api/auth/devices',
+    /** 换一次性 SSE 票据：EventSource 不能自定义 header，非回环来源只能靠 `?ticket=`。 */
+    sseTicket: () => '/api/auth/sse-ticket',
+  },
+
   settings: {
     get: () => '/api/settings',
     put: () => '/api/settings',

@@ -1,7 +1,7 @@
 //! 基座：消息进 → 答案出（三相自旋工作流）
 
 use crate::agent::context::CONVERGENT_SYSTEM_PROMPT;
-use crate::error::{AppError, AppResult};
+use crate::error::{is_transport_error, is_upstream_unavailable, AppError, AppResult};
 use crate::model::types::{
     to_wire_items, FunctionCall, InputItem, ResponsesRequest, StreamResult, ToolChoice,
 };
@@ -11,151 +11,26 @@ use serde_json::{json, Value};
 use std::collections::HashSet;
 use std::sync::Arc;
 
+// ── 子域归位 ────────────────────────────────────────────────────────────
+// 原先散落在本文件的补丁函数族，已按职责迁至兄弟模块：
+//   inject.rs —— 注入物裁剪（cap_inject / inject_weight / cap_inject_weighted / env_cap）
+//   stall.rs  —— 无进展止损判据（edit_signature / empty_spin_signal / stall_reason_of）
+//   text.rs   —— 文本骨架工具（is_skeleton_line / extract_skeleton / clip_utf8）
+// 此处只导入**本文件真正调用**的项；测试所需的其余项由 `workflow_tests.rs` 自行从子域导入。
+use super::inject::{cap_inject, cap_inject_weighted, env_cap};
+use super::stall::{edit_signature, empty_spin_signal, idle_explore_hint, stall_reason_of};
+use super::text::{clip_utf8, extract_skeleton};
+use super::contract::contract_for;
+use super::tooling::{tool_envelope_secs, verify_auto_enabled, TOOL_TIMEOUT_DEFAULT};
+
 // ── 调参集中地（全部有默认值，环境变量见注释）──
 const MIRROR_MIN_INTERVAL: u32 = 10;
-/// 工具默认超时（秒，REAL_TOOL_TIMEOUT_SECS 可覆盖）
-const TOOL_TIMEOUT_DEFAULT: u64 = 60;
-
-/// 信封超时（秒）：域地板上浮 + 参数 timeout+15s 余量——工具自身超时先触发，信封只兜死锁。
-fn verify_auto_enabled() -> bool {
-    match std::env::var("REAL_VERIFY_AUTO") {
-        Ok(v) => !matches!(v.trim().to_lowercase().as_str(), "off" | "0" | "false" | "no"),
-        Err(_) => true,
-    }
-}
-
-fn tool_envelope_secs(env_default: u64, tool: &str, args: &serde_json::Value) -> u64 {
-    let mut t = env_default;
-    // 域工具超时地板：内核不认识具体域，遍历注册表询问——
-    for d in crate::domains::registered() {
-        if let Some(floor) = d.tool_timeout_floor(tool) {
-            t = t.max(floor);
-        }
-    }
-    if let Some(n) = args.get("timeout").and_then(|v| v.as_i64()) {
-        if n > 0 {
-            t = t.max(n as u64 + 15);
-        }
-    }
-    t
-}
-
-// ── 话术资产（prompts 外置）──
-
-/// 域系统提示：classify 命中的域工作流话术；零域命中返回空列表。
-fn domain_prompts(goal: &str) -> Vec<&'static str> {
-    crate::domains::registered()
-        .iter()
-        .filter(|d| d.classify(goal))
-        .filter_map(|d| d.system_prompt())
-        .collect()
-}
-
-/// 组合契约：命中域的工作流话术 + 命中的工作规范（内核零域知识）。
-fn contract_for(goal: &str) -> String {
-    let mut out = domain_prompts(goal).join("\n\n");
-    let specs = crate::agent::specs::match_specs(goal);
-    if specs.is_empty() {
-        return out;
-    }
-    if !out.is_empty() {
-        out.push_str("\n\n");
-    }
-    out.push_str(&specs);
-    out
-}
-
 /// 运行结果（对外只暴露答案；事实走事件流）
 pub struct AgentOutcome {
     pub answer: String,
 }
 
 // 入口：工作平台唯一的 agent 启动点（chat 路由 / 定时任务共用）
-
-/// 注入物封顶（字符数；env 可调，0=不封顶）——控上下文体积、护前缀缓存。
-fn cap_inject(s: String, cap: usize, label: &str) -> String {
-    if cap == 0 || s.chars().count() <= cap {
-        return s;
-    }
-    let mut out: String = s.chars().take(cap).collect();
-    out.push_str(&format!("\n（{label}超过 {cap} 字已截断：需要完整内容时明确说明具体条目，后端可单独回灌）"));
-    tracing::info!(label, cap, "注入物超限已截断");
-    out
-}
-
-fn env_cap(name: &str, default: usize) -> usize {
-    std::env::var(name).ok().and_then(|v| v.parse::<usize>().ok()).unwrap_or(default)
-}
-
-fn inject_weight(title: &str) -> usize {
-    /// 轻：认得你是谁、有什么凭证、有哪些技能 —— 有就行，不必多占。
-    const LIGHT: [&str; 4] = ["用户偏好", "用户画像", "用户凭证", "可用技能"];
-    /// 重：**别再犯的错**、**已经定过的结论**、**做过的活** —— 少一句就白跑一轮。
-    const HEAVY: [&str; 6] = [
-        "失败教训",
-        "上轮结论",
-        "历史任务记忆",
-        "对话脉络",
-        "长期记忆",
-        "工作日志",
-    ];
-    if LIGHT.iter().any(|k| title.contains(k)) {
-        1
-    } else if HEAVY.iter().any(|k| title.contains(k)) {
-        3
-    } else {
-        2
-    }
-}
-
-/// **按段分额度的注入封顶** —— 替代「从尾部一刀切」。
-fn cap_inject_weighted(s: String, total: usize, label: &str) -> String {
-    if total == 0 || s.chars().count() <= total {
-        return s;
-    }
-    // 分段：以「【」开头的行起新段
-    let mut sections: Vec<(String, String)> = Vec::new();
-    let mut title = String::new();
-    let mut body = String::new();
-    for line in s.split_inclusive('\n') {
-        if line.trim_start().starts_with('【') {
-            if !title.is_empty() || !body.trim().is_empty() {
-                sections.push((title.clone(), body.clone()));
-            }
-            title = line.trim().to_string();
-            body.clear();
-        } else {
-            body.push_str(line);
-        }
-    }
-    if !title.is_empty() || !body.trim().is_empty() {
-        sections.push((title, body));
-    }
-    if sections.len() <= 1 {
-        // 单段（或没分段）：退回原有的一刀切，行为不变
-        return cap_inject(s, total, label);
-    }
-    let wsum: usize = sections.iter().map(|(t, _)| inject_weight(t)).sum::<usize>().max(1);
-    let mut out = String::new();
-    let mut cut = 0usize;
-    for (t, b) in &sections {
-        let full = format!("{t}{b}");
-        let n = full.chars().count();
-        let quota = total * inject_weight(t) / wsum;
-        if n <= quota {
-            out.push_str(&full);
-        } else {
-            out.extend(full.chars().take(quota));
-            out.push_str(&format!(
-                "\n…（本段 {n} 字超额度 {quota}，余下 {} 字已略——需要时 read 记忆目录下对应文件）\n",
-                n - quota
-            ));
-            cut += 1;
-        }
-    }
-    tracing::info!(label, sections = sections.len(), cut, total, "注入物按段分额度");
-    out
-}
 
 pub async fn run_agent(
     ctx: &AppState,
@@ -410,6 +285,18 @@ pub async fn run_agent(
     loop_.message_emitter.arm_ticker();
 
     let outcome = loop_.spin().await;
+    // ── 进度上报（收尾）：无论成功失败都落一条终态，面板据此把点从蓝变绿/红 ──
+    // 挂在 `spin()` 的**唯一返回处**（函数内有多个 `return`，落到这里才算收口）。
+    {
+        let ws = loop_.workspace_root().await;
+        let tag = crate::agent::progress::tag_for(session_id);
+        match &outcome {
+            Ok((_, rounds, _, _)) => {
+                crate::agent::progress::finish(&ws, &tag, true, *rounds as usize, "完成")
+            }
+            Err(_) => crate::agent::progress::finish(&ws, &tag, false, 0, "失败"),
+        }
+    }
     // ★ 先停两路定时冲刷表，再 drop 循环体 —— 顺序是硬性的。
     loop_.reasoning_emitter.shutdown().await;
     loop_.message_emitter.shutdown().await;
@@ -501,23 +388,6 @@ pub async fn run_agent(
 
 // 循环本体（三相自旋）
 
-/// 传输类错误判定：SSE 读取/流式网络错误可重试；
-fn is_transport_error(e: &AppError) -> bool {
-    let s = e.to_string();
-    // "流异常早停"判为可重试：偶发抖动自愈，持续早停（重试 3 次）才上抛
-    s.contains("SSE 读取失败") || s.contains("流式网络请求失败") || s.contains("SSE 解析失败")
-        || s.contains("流异常早停")
-        || is_upstream_unavailable(e)
-}
-
-/// 上游不可用（HTTP 5xx / 408 / 网络层失败）——与"模型答错了"不是一回事
-fn is_upstream_unavailable(e: &AppError) -> bool {
-    let s = e.to_string();
-    if s.contains("LLM 流式 HTTP 5") || s.contains("LLM 流式 HTTP 408") || s.contains("上游繁忙") {
-        return true;
-    }
-    matches!(e, AppError::Http(_)) || s.contains("流式网络请求失败")
-}
 /// 事实账本：循环全程只记录，不判定
 struct Ledger {
     goal: String,
@@ -549,6 +419,8 @@ struct Ledger {
     /// 阅读账：文件 → (首读轮次, 读取次数)——重复 read 从不可见变可见
     read_memo: std::collections::HashMap<String, (u32, u32)>,
     stall_count: u32,
+    /// 久探不产提醒是否已发过（动手一次即复位，允许再提醒）
+    idle_hinted: bool,
     /// 交账宽限计数：止损触底后，先注「交账指令」再收口的缓冲轮数（有新的实体进展即清零）。
     stall_grace: u32,
     /// 分相计时累计（毫秒）：[0]=决策相（含 LLM 流式），[1]=执行+治理+镜像相。
@@ -587,6 +459,10 @@ struct Loop<'a> {
     tools: Vec<crate::model::types::ToolDef>,
     history: Vec<InputItem>,
     /// 当轮用户轮的库内行 id（`build_history` 交出来）—— 当轮帧写回用，见其文档。
+    /// ⚠️ 09-25 起**不再用于写回库**（见 `spin()` 里那段说明：当轮帧写回会造成中段改写、打碎前缀缓存）。
+    /// 保留是因为它由装配层传入、改动调用签名收益极低，且诊断/回放路径仍可能需要"当轮消息的库内 id"。
+    /// 该会话实测每轮重算 ~147K token —— 写回是主因，故先切读写、留着 id 备用。
+    #[allow(dead_code)]
     history_last_user_id: Option<String>,
     memory_ctx: String,
     goal_line: String,
@@ -675,6 +551,7 @@ impl Loop<'_> {
             edit_seq: 0,
             read_memo: std::collections::HashMap::new(),
             stall_count: 0,
+            idle_hinted: false,
             stall_grace: 0,
             phase_ms: [0, 0],
             last_explore_round: 0,
@@ -736,28 +613,54 @@ impl Loop<'_> {
                 tool_calls: None,
             });
         }
-        // 写回库：**只换 `content`**（保留 `attachments` 等旁路键）。
-        if reused_row {
-            if let Some(id) = self.history_last_user_id.as_deref() {
-                if let Err(e) = crate::db::repos::update_message_item_content(
-                    &self.ctx.pool,
-                    id,
-                    &user_content.to_string(),
-                )
-                .await
-                {
-                    tracing::warn!(
-                        session = %self.session_id,
-                        error = %e,
-                        "当轮帧写回失败：本轮正常，但下一个 run 会在该位置断前缀缓存"
-                    );
-                }
-            }
-        }
+        // ⚠️ 09-25：**不再把当轮帧写回库**（原实现见 git 历史）。
+        //
+        // 当轮帧里含 `{memory}`（项目上下文）与 `{contract}`（工作规范），而这两段是**每轮重新渲染**的。
+        // 一旦写回库，下一轮装配时 `trim_stale_frames` 就**必须**把这条帧从「全貌」砍回「光杆」
+        //（`STALE_FRAME_KEEP_TASKS = 0` ⇒ 只保当前帧全貌）。一来一回两次改写都落在**历史中段**，
+        // 而前缀缓存是逐字节前缀匹配：中段一改，其后所有字节全部作废，每轮按 miss 重算
+        //（实测「0928国庆大环游」每轮重算 ~147K tokens，日志原文："首个改动点之后的前缀全部失效"）。
+        //
+        // 库里保持 `chat.rs` 落库的**原始用户输入**（append-only），于是：
+        //   · 历史帧永不含 memory ⇒ `trim_stale_frames` 找不到分界标记，自然退化为 no-op；
+        //   · 历史只追加、不改写 ⇒ 前缀缓存首次可连续命中；
+        //   · 前端读到的就是用户原话，`.localUserOf` 剥不剥都不影响显示（反而更干净）。
+        // 当轮帧仍在内存里含 memory —— 模型看到的上下文与改动前**逐字节等价**
+        //（改动前历史帧同样会被砍成光杆），故这是纯收益、零语义变化的改动。
+        let _ = reused_row;
+
+        // ── 进度上报（起手）：让右侧栏「进度」页看见 agent 自己在跑什么 ──
+        // 与外部长活（渲染 / 转写）共用同一份快照 —— 契约见 `agent::progress` 模块头，
+        // 面板**零改动**即可显示。工作区**只在这一处解析一次**，循环内复用。
+        let prog_ws = self.workspace_root().await;
+        let prog_tag = crate::agent::progress::tag_for(&self.session_id);
+        crate::agent::progress::report(
+            &prog_ws,
+            &prog_tag,
+            crate::agent::progress::Patch {
+                title: Some(self.goal_line.as_str()),
+                state: "running",
+                n_done: 0,
+                what: "起手",
+            },
+        );
 
         // 主循环头硬检查取消：取消即退出，杜绝残流交错。
         while !st.finished && st.rounds < max_rounds && !self.cancel.is_cancelled() {
             st.rounds += 1;
+
+            // ── 进度上报（每轮）：轮次即进度，what 给出当前在干什么 ──
+            // 读-改-写一份几 KB 的本地文件，开销远小于一轮模型调用；失败也不打断任务。
+            crate::agent::progress::report(
+                &prog_ws,
+                &prog_tag,
+                crate::agent::progress::Patch {
+                    title: None,
+                    state: "running",
+                    n_done: st.rounds as usize,
+                    what: "执行中",
+                },
+            );
 
             // ── 分相计时起点（观测埋点）──
             let t_phase_round = std::time::Instant::now();
@@ -967,6 +870,7 @@ impl Loop<'_> {
                 st.stall_count = 0;
                 st.stall_grace = 0;
                 st.narrowed = false;
+                st.idle_hinted = false;
             } else if st.last_explore_round != st.rounds {
                 st.stall_count += 1;
             }
@@ -984,6 +888,24 @@ impl Loop<'_> {
                     tracing::warn!(
                         session = %self.session_id, round = st.rounds, stall_count = st.stall_count,
                         "停滞唤醒：注入换策略提示"
+                    );
+                }
+            }
+            // 久探不产档：与上面那族**互补**——上面管「原地打转」（stall_count 涨），
+            // 这里管「一直在读新东西却没动手」（stall_count 恒 0，那族判不到）。只提醒、不停机。
+            if !st.idle_hinted {
+                let idle_at = crate::config::settings::tuning()
+                    .stall_idle_rounds
+                    .load(std::sync::atomic::Ordering::Relaxed);
+                if let Some(hint) =
+                    idle_explore_hint(st.rounds, st.last_edit_round, st.stall_count, idle_at)
+                {
+                    st.idle_hinted = true;
+                    st.pending_tail = Some(hint);
+                    tracing::warn!(
+                        session = %self.session_id, round = st.rounds,
+                        last_edit_round = st.last_edit_round, idle_at,
+                        "久探不产：已读多轮未动手，注入催办提醒（不停机）"
                     );
                 }
             }
@@ -2206,6 +2128,7 @@ impl Loop<'_> {
         );
         Ok((answer, st.rounds, st.tool_trace.len() as u32, st.changed_files.clone()))
     }
+
 }
 
 // 协议归一（call_id 全历史唯一）
@@ -2240,53 +2163,6 @@ fn normalize_calls(st: &Ledger, fcs: Vec<FunctionCall>) -> Vec<FunctionCall> {
     out
 }
 
-/// 编辑签名：modify=hash(file+mode+find/replace 前缀)；write=hash(file+content 前缀+长度)。
-fn edit_signature(tool: &str, args: &Value) -> Option<(String, u64)> {
-    use std::hash::{Hash, Hasher};
-    let file = args
-        .get("file")
-        .or_else(|| args.get("path"))
-        .or_else(|| args.get("target"))
-        .and_then(|v| v.as_str())?
-        .trim()
-        .to_string();
-    if file.is_empty() {
-        return None;
-    }
-    let mut hasher = std::collections::hash_map::DefaultHasher::new();
-    file.hash(&mut hasher);
-    if tool == "modify" {
-        let cs = args.get("change_spec").unwrap_or(args);
-        let mode = cs.get("mode").and_then(|v| v.as_str()).unwrap_or("block");
-        let find = cs
-            .get("find")
-            .and_then(|v| v.as_str())
-            .map(|s| s.chars().take(80).collect::<String>());
-        let line = cs.get("line").and_then(|v| v.as_u64()).unwrap_or(0);
-        let replace = cs
-            .get("replace")
-            .and_then(|v| v.as_str())
-            .map(|s| s.chars().take(80).collect::<String>());
-        mode.hash(&mut hasher);
-        find.hash(&mut hasher);
-        line.hash(&mut hasher);
-        replace.hash(&mut hasher);
-    } else {
-        let content = args.get("content").and_then(|v| v.as_str()).unwrap_or("");
-        content.chars().take(80).collect::<String>().hash(&mut hasher);
-        content.chars().count().hash(&mut hasher);
-    }
-    Some((file, hasher.finish()))
-}
-
-/// 空转特征：0 工具 + 0 文本 + 输出≤2 token + 思考<40 字（1-token 死循环）。
-fn empty_spin_signal(resp: &StreamResult) -> bool {
-    resp.function_calls.is_empty()
-        && resp.output_text.trim().is_empty()
-        && resp.usage.as_ref().map(|u| u.output_tokens <= 2).unwrap_or(true)
-        && resp.reasoning.trim().chars().count() < 40
-}
-
 /// 无进展止损判据：只陈述「这段时间没有产出」，不判定模型做错了什么。
 fn stall_reason(st: &Ledger) -> Option<&'static str> {
     let t = crate::config::settings::tuning();
@@ -2301,82 +2177,5 @@ fn stall_reason(st: &Ledger) -> Option<&'static str> {
     )
 }
 
-/// 符号行启发式（Rust / TS / Python / Markdown 通用）：骨架只认这些前缀，别贪。
-fn is_skeleton_line(t: &str) -> bool {
-    if t.len() > 300 {
-        return false;
-    }
-    const PREFIXES: &[&str] = &[
-        "pub fn ", "pub async fn ", "fn ", "async fn ", "pub struct ", "struct ", "pub enum ",
-        "enum ", "impl ", "pub trait ", "trait ", "pub mod ", "mod ", "pub const ", "const ",
-        "pub static ", "static ", "class ", "def ", "interface ", "export ", "function ",
-        "# ", "## ", "### ",
-    ];
-    PREFIXES.iter().any(|p| t.starts_with(p))
-}
-
-/// 从文件全文提取符号骨架：`(总行数, "行号: 符号行" 串)`；cap 60 条 / 6KB（预算硬顶）。
-fn extract_skeleton(content: &str) -> (u64, String) {
-    const MAX_ITEMS: usize = 60;
-    const MAX_BYTES: usize = 6 * 1024;
-    let mut sk = String::new();
-    for (i, l) in content.lines().enumerate() {
-        let t = l.trim_start();
-        if is_skeleton_line(t) {
-            use std::fmt::Write as _;
-            let _ = writeln!(sk, "{}: {}", i + 1, t);
-            if sk.lines().count() >= MAX_ITEMS || sk.len() >= MAX_BYTES {
-                break;
-            }
-        }
-    }
-    (content.lines().count() as u64, sk.trim_end().to_string())
-}
-
-/// UTF-8 安全截断（floor_char_boundary 未稳定，手写）：回填注入的体积硬顶。
-fn clip_utf8(s: &str, max: usize) -> &str {
-    if s.len() <= max {
-        return s;
-    }
-    let mut i = max;
-    while i > 0 && !s.is_char_boundary(i) {
-        i -= 1;
-    }
-    &s[..i]
-}
-
-/// 判据本体（纯标量入参 + 阈值显式传入，便于单测——`Ledger` 有 30+ 字段，整体构造成本高）。
-fn stall_reason_of(
-    stall_count: u32,
-    rounds: u32,
-    last_edit_round: u32,
-    no_files: bool,
-    stop_rounds: u32,
-    dry_rounds: u32,
-    min_rounds: u32,
-) -> Option<&'static str> {
-    if rounds < min_rounds {
-        return None;
-    }
-    // ① 曾有实体进展、但已连续 stop_rounds 个零进展轮 ⇒ 大概率卡在同一处反复试。
-    if last_edit_round > 0 && stall_count >= stop_rounds {
-        return Some(
-            "无进展止损：已连续多个零进展轮无任何新产出（默认 12 轮，env REAL_STALL_STOP_ROUNDS 可调），\
-疑似在绕圈——已收口并交付现有发现（省下的轮次即省下的费用）。\
-这不是封死：**直接回复『继续』（可附新思路或纠偏信息），将带着断点与已有发现续跑**；也可把剩余工作拆小后重发。",
-        );
-    }
-    // ② 从未改过文件的长任务 ⇒ 按"只诊断不改动"看待，到点也该有结论了。
-    if last_edit_round == 0 && no_files && rounds >= dry_rounds {
-        return Some(
-            "无进展止损：本任务轮数已达兜底线且未产生任何文件改动（默认 30 轮，env REAL_STALL_DRY_ROUNDS 可调，\
-按纯诊断任务处理），已收口并交付已查明的结论。\
-若还需继续：**直接回复『继续』（可附新方向）即可带断点续跑**，或拆成更小的题重发。",
-        );
-    }
-    None
-}
-
-#[cfg(test)]
 #[path = "workflow_tests.rs"]
 mod workflow_tests;

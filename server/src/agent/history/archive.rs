@@ -148,7 +148,14 @@ pub(crate) async fn archive_old_tasks(
     let mut rewritten = 0usize;
     if !cooling {
         // 退场候选：年龄超限（硬）+ 引用断续（软）—— 判据唯一，见 `retire_old_tasks`。
-        let retiring = retire_old_tasks(task_count, &kw, &input, REFERENCE_WINDOW, AGE_FRESH_ROUNDS);
+        // ★ 冷缓存（免费）⇒ **一次压到位**：新鲜档降到最小，更早的工具回执全压成路标。
+        // 热缓存时仍按 3 回合原文保留（此时改写要破缓存，必须克制）。
+        let fresh = if cache_cold {
+            AGE_FRESH_ROUNDS.min(super::govern::th::COLD_RETIRE_FRESH_ROUNDS)
+        } else {
+            AGE_FRESH_ROUNDS
+        };
+        let retiring = retire_old_tasks(task_count, &kw, &input, REFERENCE_WINDOW, fresh);
         // **收益门槛前置**：先估可回收字节，不够就不动。
         let reclaimable: usize = retiring
             .iter()
@@ -375,6 +382,13 @@ pub(crate) async fn archive_old_body(
     let keep_recent = crate::config::settings::tuning()
         .archive_keep_recent
         .load(std::sync::atomic::Ordering::Relaxed);
+    // ★ 冷缓存（免费）⇒ **一次压到位**：正文保留回合数取 `min(配置, 冷档上限)`。
+    // 热缓存时按用户配置（默认 4）保留 —— 此时改写要破缓存，必须克制。
+    let keep_recent = if cache_cold {
+        keep_recent.min(super::govern::th::COLD_KEEP_RECENT_CAP)
+    } else {
+        keep_recent
+    };
     let keep = keep_recent.min(user_idx.len().saturating_sub(1)).max(2);
     if user_idx.len() <= keep {
         return;

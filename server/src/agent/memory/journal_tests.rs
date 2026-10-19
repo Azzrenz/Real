@@ -339,4 +339,80 @@ mod tests {
         }
         cleanup(&ws);
     }
+
+    /// A：跨会话接续 —— 新任务（空目录）要自动带上**上一个任务**的 `MEMORY.md` 正文。
+    #[test]
+    fn fresh_task_inherits_prior_task_memory() {
+        let ws = probe("carryover");
+        let old = "20260912T100000+0800";
+        let new = "20260912T145519+0800";
+
+        // 先造出"上一个任务"：它留下了结论
+        let dir = task_dir(&ws, old);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            task_memory_path(&ws, old),
+            "journal.rs:295 → 只报字符数，故模型还得 read",
+        )
+        .unwrap();
+
+        // 新任务的目录是空的 —— 但注入必须把上一任务的记忆正文带出来
+        let s = build_journal_prompt(&ws, new, true);
+        assert!(s.contains("上一个任务"), "新任务必须接续上一个任务：{s}");
+        assert!(s.contains(old), "要点名是哪个任务：{s}");
+        assert!(
+            s.contains("只报字符数"),
+            "上一任务的记忆**正文**必须附上（否则模型还得去 read）：{s}"
+        );
+        assert!(s.contains("本任务记忆"), "本任务记忆的路径仍要给出：{s}");
+
+        // 空文件 / 纯空白 = 那个任务没留下结论 ⇒ 没得接
+        std::fs::write(task_memory_path(&ws, old), "   \n").unwrap();
+        let s2 = build_journal_prompt(&ws, new, true);
+        assert!(!s2.contains("上一个任务"), "旧任务没留结论就不该接：{s2}");
+
+        // 只接**更早**的：拿更晚的任务当"上一个"是错的
+        let later = "20260912T235959+0800";
+        std::fs::create_dir_all(task_dir(&ws, later)).unwrap();
+        std::fs::write(task_memory_path(&ws, later), "未来的结论").unwrap();
+        let s3 = build_journal_prompt(&ws, new, true);
+        assert!(!s3.contains("未来的结论"), "不得接续更晚的任务：{s3}");
+
+        cleanup(&ws);
+    }
+
+    /// B：本任务已有记忆时，注入要**直接带正文**，而不是只报字符数。
+    #[test]
+    fn own_memory_body_is_inlined() {
+        let ws = probe("inline");
+        let dir = task_dir(&ws, TK);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            task_memory_path(&ws, TK),
+            "build_journal_prompt → 每轮重建注入\n",
+        )
+        .unwrap();
+
+        let s = build_journal_prompt(&ws, TK, true);
+        assert!(s.contains("字符）"), "字符数仍要报（判断是否超限）：{s}");
+        assert!(
+            s.contains("build_journal_prompt → 每轮重建注入"),
+            "记忆正文必须内联，省掉再 read 一次：{s}"
+        );
+        assert!(s.contains("不必再 read"), "要明说别再去读：{s}");
+        cleanup(&ws);
+    }
+
+    /// C：写入规范要求**落锚点**（`锚点 → 结论`），不能是没有落点的散文。
+    #[test]
+    fn memory_write_rule_demands_anchors() {
+        let ws = probe("anchor_rule");
+        let s = build_journal_prompt(&ws, TK, true);
+        assert!(s.contains("落锚点"), "要有落锚点的写入规范：{s}");
+        assert!(s.contains("锚点 → 结论"), "要给出形状：{s}");
+        // 关掉长期知识也照讲：这是写**本任务**记忆的规矩，与共享无关
+        let off = build_journal_prompt(&ws, TK, false);
+        assert!(off.contains("落锚点"), "不共享长期知识时也要讲：{off}");
+        cleanup(&ws);
+    }
 }

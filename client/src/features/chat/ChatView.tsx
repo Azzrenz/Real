@@ -2,6 +2,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { chatApi } from '../../services/domains/chat';
 import { eventsApi, SSE_BASE_URL } from '../../services/domains/events';
+import { needsSseTicket, sseTicketQuery } from './lib/sseTicket';
+import { useAuthStore } from '../auth/store/authStore';
 import { useChatStore, feedEvent, type Round } from './store/chatStore';
 import { useSessionStore } from '../sessions/store/sessionStore';
 import { useToastStore } from '../../shared/store/toastStore';
@@ -9,10 +11,13 @@ import { Icon } from '../../shared/ui/icons';
 import { useT } from '../../shared/i18n';
 import { SkillDialog } from '../../app/SkillDialog';
 import { AssistantRound } from './components/AssistantRound';
+import { ChatHead } from './components/ChatHead';
 import { Composer } from './components/Composer';
 import { HeadDock } from './components/HeadDock';
+import { MobileStatusBar } from './components/MobileStatusBar';
 import type { ChatIndexItem } from './components/ChatHistory';
 import { UserBubbleText } from './components/UserBubbleText';
+import { useIsMobile } from '../../shared/lib/viewport';
 import {
   parseMessageAttachments,
   toPayload,
@@ -38,6 +43,33 @@ interface ChatItem {
 
 const EMPTY: never[] = [];
 
+
+/* ---------- 常驻技能 ---------- */
+
+/** 已挂技能跨会话常驻：加载一次就一直生效，直到用户点 × 移除。
+ *  用户诉求原话：「那个技能一加载了以后就固定在那儿了，所以我以后你每次干活都是把那个技能给加载」。
+ *  不再每次手点，也不需要在输入框里把 SKILL.md 当附件发。 */
+const PICKED_SKILL_KEY = 'real.pickedSkill.v1';
+
+function readPickedSkill(): string[] {
+  try {
+    const raw = localStorage.getItem(PICKED_SKILL_KEY);
+    const arr = raw ? JSON.parse(raw) : [];
+    return Array.isArray(arr) ? arr.filter((x) => typeof x === 'string' && x) : [];
+  } catch {
+    return [];
+  }
+}
+
+function writePickedSkill(list: string[]) {
+  try {
+    if (list.length === 0) localStorage.removeItem(PICKED_SKILL_KEY);
+    else localStorage.setItem(PICKED_SKILL_KEY, JSON.stringify(list));
+  } catch {
+    /* 存储不可用（隐私模式等）时退化为纯内存，不影响发送 */
+  }
+}
+
 /* ---------- panel ---------- */
 
 
@@ -49,6 +81,7 @@ export function ChatView({ sessionId }: Props) {
     return hit?.title || '';
   });
   const t = useT();
+  const isMobile = useIsMobile();
   const [editingTitle, setEditingTitle] = useState(false);
   const sess = useChatStore((s) => s.sessions[sessionId]);
   const rounds = sess?.rounds ?? EMPTY;
@@ -59,7 +92,8 @@ export function ChatView({ sessionId }: Props) {
   const [sending, setSending] = useState(false);
   const [skillsOpen, setSkillsOpen] = useState(false);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
-  const [pickedSkill, setPickedSkill] = useState<string[]>([]);
+  // 已挂技能跨会话常驻（见 readPickedSkill）：加载一次就一直生效，直到用户点 × 移除。
+  const [pickedSkill, setPickedSkill] = useState<string[]>(() => readPickedSkill());
   const [phaseHint, setPhaseHint] = useState('正在准备…');
   const bodyRef = useRef<HTMLDivElement>(null);
   const flowRef = useRef<HTMLDivElement>(null);
@@ -71,12 +105,27 @@ export function ChatView({ sessionId }: Props) {
   const aliveRef = useRef(true);
   useEffect(() => () => { aliveRef.current = false; }, []);
 
-  const startEvents = (sid: string, force = false) => {
-    if (!aliveRef.current) return;
-    if (!force && esRef.current && esRef.current.readyState !== EventSource.CLOSED) return;
-    if (esRef.current) esRef.current.close();
-    const lastSeq = useChatStore.getState().lastSeq[sid] ?? 0;
-    const es = new EventSource(`${SSE_BASE_URL}${eventsApi.streamUrl(sid, lastSeq)}`);
+
+  // 挂上/移除技能即落盘 —— 关窗、刷新、换会话都还在，这才叫"固定住了"。
+  useEffect(() => {
+    writePickedSkill(pickedSkill);
+  }, [pickedSkill]);
+
+  // 每次连接分配一个世代号。换取票据是异步的（见 lib/sseTicket.ts），换票期间若又发起了一次
+  // 连接（切会话、手动重连），旧的那次必须作废，否则两条流会同时开着、先到的那条被覆盖成野流。
+  const startGenRef = useRef(0);
+
+  const scheduleReconnect = (sid: string, gen: number) => {
+    const backoff = Math.min(30_000, 1_000 * 2 ** Math.min(reconnectTriesRef.current, 5));
+    reconnectTriesRef.current += 1;
+    window.setTimeout(() => {
+      if (aliveRef.current && gen === startGenRef.current) startEvents(sid, true);
+    }, backoff);
+  };
+
+  /** 真正建立连接。票据查询串为空时不改 URL（桌面回环就是这条）。 */
+  const openStream = (sid: string, lastSeq: number, query: string, gen: number) => {
+    const es = new EventSource(`${SSE_BASE_URL}${eventsApi.streamUrl(sid, lastSeq)}${query}`);
     esRef.current = es;
     es.onmessage = (e) => {
       lastEventAtRef.current = Date.now();
@@ -90,17 +139,43 @@ export function ChatView({ sessionId }: Props) {
     es.onerror = () => {
       es.close();
       if (esRef.current === es) esRef.current = null;
-      const backoff = Math.min(30_000, 1_000 * 2 ** Math.min(reconnectTriesRef.current, 5));
-      reconnectTriesRef.current += 1;
-      window.setTimeout(() => {
-        if (aliveRef.current) startEvents(sid, true);
-      }, backoff);
+      scheduleReconnect(sid, gen);
     };
     es.onopen = () => {
       reconnectTriesRef.current = 0;
     };
   };
+
+  const startEvents = (sid: string, force = false) => {
+    if (!aliveRef.current) return;
+    if (!force && esRef.current && esRef.current.readyState !== EventSource.CLOSED) return;
+    if (esRef.current) esRef.current.close();
+    const lastSeq = useChatStore.getState().lastSeq[sid] ?? 0;
+    const gen = ++startGenRef.current;
+    // 桌面（回环）没有设备 token：同步直连，零等待、URL 与改动前逐字节一致。
+    if (!needsSseTicket()) {
+      openStream(sid, lastSeq, '', gen);
+      return;
+    }
+    void (async () => {
+      let query: string;
+      try {
+        query = await sseTicketQuery(sid);
+      } catch {
+        // 拿不到票据就别去连（连了也是 404 循环，页面会静默坏掉）。是「token 失效」还是
+        // 「只是这次会话/网络不行」分辨不了 —— 单看 ticket 的那个 404 也可能是「会话不存在」，
+        // 直接清 token 会把有效登录踢掉。所以走 probe（打 /api/auth/devices）：token 真失效
+        // 才置未配对、界面回配对页；token 还好的话保持已配对，这里退避重试。
+        void useAuthStore.getState().probe();
+        if (aliveRef.current && gen === startGenRef.current) scheduleReconnect(sid, gen);
+        return;
+      }
+      if (!aliveRef.current || gen !== startGenRef.current) return;
+      openStream(sid, lastSeq, query, gen);
+    })();
+  };
   const closeEvents = () => {
+    startGenRef.current += 1; // 作废在途的换票，避免关掉后又被它开出一条流
     esRef.current?.close();
     esRef.current = null;
   };
@@ -268,7 +343,7 @@ export function ChatView({ sessionId }: Props) {
         queuedSendRef.current = { text, atts: attachments };
         setInput('');
         setAttachments([]);
-        setPickedSkill([]);
+        // 技能常驻：排队发送也不清空，下一轮仍带着它
         clearDraft(sessionId);
         useToastStore.getState().show(
           t('任务运行中：这条带 {n} 个附件的消息已排队，本轮一结束自动发送', {
@@ -294,7 +369,7 @@ export function ChatView({ sessionId }: Props) {
     const atts = attachments;
     setInput('');
     setAttachments([]);
-    setPickedSkill([]);
+    // 技能常驻：发送后不清空，下次不用再点（用户诉求：加载一次就一直挂着）
     clearDraft(sessionId);
     setPhaseHint(atts.length > 0 ? '正在读取附件…' : '正在准备…');
     await submitChat(text, atts);
@@ -580,37 +655,26 @@ export function ChatView({ sessionId }: Props) {
 
   return (
     <div className="chat">
-      <div className="chat-head">
-        {editingTitle ? (
-          <input
-            className="chat-title-input"
-            defaultValue={sessionTitle}
-            autoFocus
-            onFocus={(e) => e.currentTarget.select()}
-            onBlur={() => setEditingTitle(false)}
-            onKeyDown={(e) => {
-              if (e.nativeEvent.isComposing || e.keyCode === 229) return;
-              if (e.key === 'Enter') {
-                const v = e.currentTarget.value.trim();
-                if (v && v !== sessionTitle) void useSessionStore.getState().renameSession(sessionId, v);
-                setEditingTitle(false);
-              }
-              if (e.key === 'Escape') setEditingTitle(false);
-            }}
-            onClick={(e) => e.stopPropagation()}
-          />
-        ) : (
-          <span
-            className="chat-title"
-            title={sessionTitle}
-            onClick={() => setEditingTitle(true)}
-          >
-            {sessionTitle || t('新任务')}
-          </span>
-        )}
-        <span className="spacer" />
-        <HeadDock chatIndex={chatIndex} onJumpChat={jumpToMessage} />
-      </div>
+      {/* 桌面上这一条承载任务标题 + HeadDock。手机上它整条让位给 MobileStatusBar：
+          状态（在跑/等你审批/已完成）+ 当前步骤 + 花费更值得占那 36px，标题上移到
+          标题栏，HeadDock 塞进状态条右侧（图标态）。 */}
+      {!isMobile && (
+        <ChatHead
+          sessionId={sessionId}
+          sessionTitle={sessionTitle}
+          editingTitle={editingTitle}
+          setEditingTitle={setEditingTitle}
+          chatIndex={chatIndex}
+          onJumpChat={jumpToMessage}
+        />
+      )}
+
+      {isMobile && (
+        <MobileStatusBar
+          sessionId={sessionId}
+          dock={<HeadDock chatIndex={chatIndex} onJumpChat={jumpToMessage} />}
+        />
+      )}
 
       <div className="chat-body" ref={bodyRef} onScroll={onBodyScroll}>
         <div className="chat-flow" ref={flowRef}>
@@ -711,6 +775,7 @@ export function ChatView({ sessionId }: Props) {
                 live={r === live}
                 phaseHint={phaseHint}
                 sessionId={sessionId}
+                compact={isMobile}
                 onRegen={stableRegenerate}
               />
             );

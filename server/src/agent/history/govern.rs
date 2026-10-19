@@ -39,6 +39,19 @@ pub(crate) mod th {
     /// 工具回执的**新鲜回合数**：距当前 ≤ 它，原文保留。
     pub(crate) const RETIRE_FRESH_ROUNDS: usize = 3;
 
+    /// ★ 冷缓存（改写**免费**）时的**深压档**：一次压到位，而不是每轮零敲碎打。
+    ///
+    /// 依据：改写会破前缀缓存，唯有「缓存已冷」时免费。既然免费，就该**一次压够** ——
+    /// 压得越狠，此后热窗口撑得越久、撞 400 的次数越少。反之若只压一点点，
+    /// 下一轮又超线 ⇒ 又被追着改 ⇒ 又破一次缓存，而这次**不免费**（单次白付 ≈0.13 元）。
+    ///
+    /// 代价明确：只保**当前回合**的工具回执原文，更早的压成路标（带 spill 回取指针，
+    /// 需要时可重新读回）。影响的是"模型顺带看见的历史细节"，不影响可回取性。
+    pub(crate) const COLD_RETIRE_FRESH_ROUNDS: usize = 1;
+
+    /// ★ 冷缓存时的**正文保留回合数上限**（同上的"一次压够"）：取 `min(用户配置, 本值)`。
+    pub(crate) const COLD_KEEP_RECENT_CAP: usize = 2;
+
     /// 超过它直接压成**路标**（只留定位 + 回取指针）。
     pub(crate) const RETIRE_ROLL_ROUNDS: usize = 5;
 
@@ -50,7 +63,15 @@ pub(crate) mod th {
     pub(crate) const REWRITE_COOLDOWN_TASKS: usize = 1;
 
     /// 装配期改写的**免费时刻**判据（秒）：距上次 LLM 调用 ≥ 它 ⇒ 视为缓存已冷。
-    pub(crate) const ASSEMBLY_IDLE_SECONDS: i64 = 300;
+    ///
+    /// ⚠️ 09-27 由 300 提到 1800：300s 的依据是「5 分钟没动，上游缓存该过期了」，
+    /// 但实测该假设过短 —— 日志里 `idle=966`/`idle=610` 两轮被判定为「冷」而放行全量改写，
+    /// 而用户的操作节奏恰恰是「每轮隔几分钟到十几分钟」，命中这个误判区间。
+    /// 一旦误判：改写 → 前缀变 → **本来还热着的缓存被白白击穿**（单次白付 ≈0.13 元）。
+    /// 1800s 取「宁可少压、不可错压」的保守侧；安全性由 `assembly_rewrite_allowed` 的
+    /// **第二条判据兜底**（`input_tokens > send_safe_tokens()` 时无条件放行），
+    /// 故放宽本阈值**不会**导致撞上游 400。
+    pub(crate) const ASSEMBLY_IDLE_SECONDS: i64 = 1800;
     /// 一次改写收益不到这个比例就不动（**基准值**，实际按 input 自适应）。
     pub(crate) const REWRITE_MIN_GAIN_PCT: usize = 8;
     pub(crate) const REWRITE_MAX_GAIN_PCT: usize = 25;
@@ -241,16 +262,24 @@ pub(crate) fn window_safe_tokens() -> i64 {
 
 /// `①archive_old_tasks` 的启动线（token）—— **按缓存冷热分档**。
 pub(crate) fn deep_cut_tokens(cache_cold: bool) -> i64 {
-    // 热路径 = **自动水位**（`window_safe_tokens()`）。
-    let _ = cache_cold;
-    window_safe_tokens()
+    // 冷缓存 ⇒ 改写**免费** ⇒ 启动线归零，交给「一次压够」的深压档决定压多深。
+    // 热缓存 ⇒ 只在真会撞窗口时才动（发送安全线）。
+    // ⚠️ 原先 `let _ = cache_cold;` 把参数整个忽略 ⇒ 冷热同线（水位线≈2.4 万）⇒
+    // 「免费的时刻」与「被迫的时刻」压得一样浅，白错过了免费窗口。
+    if cache_cold {
+        0
+    } else {
+        send_safe_tokens()
+    }
 }
 
-/// `⑤archive_old_body` 的启动线（字节）—— 与 [`deep_cut_tokens`] 同一条线，只是换成字节口径。
+/// `⑤archive_old_body` 的启动线（字节）—— 与 [`deep_cut_tokens`] **同一条线**，只是字节口径。
 pub(crate) fn deep_cut_bytes(cache_cold: bool) -> usize {
-    // 热路径 = **自动水位**（同 `deep_cut_tokens`：写死比例会与自动推导分叉）。
-    let _ = cache_cold;
-    window_safe_bytes()
+    if cache_cold {
+        0
+    } else {
+        (send_safe_tokens() as u64 * th::WINDOW_B_PER_TOKEN_X100 / 100) as usize
+    }
 }
 
 pub(crate) fn assembly_rewrite_allowed(idle_seconds: i64, input_tokens: i64) -> bool {
@@ -261,6 +290,17 @@ pub(crate) fn assembly_rewrite_allowed(idle_seconds: i64, input_tokens: i64) -> 
 /// 发送安全线（token）—— 「请求绝不能超过上游窗口」的那条线，**不是**成本水位线。
 pub(crate) fn send_safe_tokens() -> i64 {
     (th::WINDOW_TOKENS * th::SEND_SAFE_PERMILLE / 1000) as i64
+}
+
+/// 窗口前移（删历史头部）的判据线 —— **具名收口，勿直接改回水位线**。
+///
+/// 为什么单独拉一个函数：窗口前移是**唯一一条既动前缀、又不受 `assembly_rewrite_allowed`
+/// 闸门约束**的路径（闸门只管内容改写）。它的唯一合法目的是「不撞上游 400」，
+/// 判据因此必须是**发送安全线**；若退回 `window_safe_tokens()`（水位线，≈24K token），
+/// 活跃会话（常态 100K~150K）会被判成「每轮超线」⇒ 每轮删头 ⇒ 前缀从下标 0 整体错位
+/// ⇒ 前缀缓存全量作废。日志实证：`first=0 replaced=392 old_tail_bytes=439139`。
+pub(crate) fn window_shift_budget() -> u64 {
+    send_safe_tokens() as u64
 }
 
 /// 缓存是否已冷：距上次 LLM 调用 ≥ [`th::ASSEMBLY_IDLE_SECONDS`]。
@@ -487,6 +527,21 @@ pub(crate) const MECHANISMS: &[Mechanism] = &[
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 冷缓存 = 改写**免费** ⇒ 启动线归零，交给「一次压够」的深压档决定压多深；
+    /// 热缓存 = 改写要破缓存 ⇒ 只在真会撞窗口（安全线）时才动。冷热**必须**分档。
+    #[test]
+    fn deep_cut_is_free_when_cold_and_cautious_when_hot() {
+        assert_eq!(deep_cut_tokens(true), 0, "冷 ⇒ 免费 ⇒ 必然压到位");
+        assert_eq!(deep_cut_tokens(false), send_safe_tokens(), "热 ⇒ 只在撞窗口时动");
+        assert_eq!(deep_cut_bytes(true), 0);
+        assert!(deep_cut_bytes(false) > 0, "热 ⇒ 字节口径同样落在安全线");
+        assert_ne!(
+            deep_cut_tokens(true),
+            deep_cut_tokens(false),
+            "冷热同线 = 免费窗口被白白浪费（原 bug）"
+        );
+    }
 
     /// **不变量：一件事只有一个部门。**
     #[test]

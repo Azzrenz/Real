@@ -386,4 +386,45 @@ mod tests {
         // 主模型就是那家 → 不重复挑自己
         assert_eq!(cheap_model_of(with_glm_key, "glm-5.3-flash"), None);
     }
+
+    /// `is_known_base_url` 是**枚举式**白名单，与 `host_mismatch` 的**排除式**判定形成对照。
+    /// 这个对照就是原审计漏洞的回归闸门：攻击者域名能过 `host_mismatch`
+    /// （它只挡「指向别家官方 host」），但**必须**被 `is_known_base_url` 拒掉。
+    #[test]
+    fn is_known_base_url_是枚举式白名单_与排除式判定形成对照() {
+        let known = known_base_urls();
+        assert!(!known.is_empty(), "档案至少要有内置厂商");
+
+        // ① 档案里登记的地址（含尾斜杠变体）必须判为已知
+        for url in &known {
+            assert!(is_known_base_url(url), "档案地址应已知: {url}");
+            assert!(
+                is_known_base_url(&format!("{url}/")),
+                "尾斜杠变体应已知: {url}/"
+            );
+            // 枚举式 ⇒ 任何前缀/后缀伪造都不算已知
+            assert!(
+                !is_known_base_url(&format!("{url}/sneaky")),
+                "前缀伪造不得判为已知: {url}/sneaky"
+            );
+        }
+
+        // ② 原漏洞回归闸门：攻击者自己的域名
+        let evil = "https://evil.tld/v1";
+        assert!(
+            host_mismatch("glm", evil).is_none(),
+            "前提：host_mismatch 是排除式（只挡别家官方 host），攻击者域名能过 —— 这正是原漏洞"
+        );
+        assert!(!is_known_base_url(evil), "枚举式白名单必须拒掉攻击者域名");
+
+        // ③ 别家官方 host 也一律不在集合里（枚举式不做任何「官方」推断）
+        assert!(!is_known_base_url("https://api.openai.com/v1"));
+        // ④ 空值 / 纯空白拒
+        assert!(!is_known_base_url(""));
+        assert!(!is_known_base_url("   "));
+        // ⑤ 大小写/尾斜杠归一化（大小写不敏感的主机名不应成为绕过口）
+        if let Some(first) = known.first() {
+            assert!(is_known_base_url(&first.to_uppercase()));
+        }
+    }
 }

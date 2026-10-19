@@ -46,6 +46,10 @@ rmcp = { version = "3.2", default-features = false, features = [
     "reqwest-native-tls",
 ] }
 
+# 鉴权（配对码/token）：256-bit CSPRNG + SHA-256 摘要；token 只存哈希，校验走常量时间比较
+sha2 = "0.10"
+rand = "0.8"
+
 # 工具
 uuid = { version = "1", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }

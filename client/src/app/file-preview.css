@@ -72,3 +72,16 @@
 .fp-editor-save.on { color: var(--ok); }
 
 .fp-editor > :last-child { flex: 1; min-height: 0; }
+
+/* 大体积媒体（视频/音频）不做内嵌播放，只留「打开所在文件夹」入口。
+   居中留白，避免单行提示贴顶看起来像报错。 */
+.fp-media-hint {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-3);
+  height: 100%;
+  padding: var(--sp-4);
+  text-align: center;
+}

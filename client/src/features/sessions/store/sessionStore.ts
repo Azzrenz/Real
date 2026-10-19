@@ -3,6 +3,7 @@
 import { create } from 'zustand';
 import { sessionsApi } from '../../../services/domains/sessions';
 import { useChatStore } from '../../chat/store/chatStore';
+import { useAuthStore } from '../../auth/store/authStore';
 import type { Message, Session, SessionDetail } from '../../../services/contracts';
 import { t } from '../../../shared/i18n';
 
@@ -89,6 +90,8 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       });
       sessionsRetries = 0;
     } catch (e) {
+      // 404 ⇒ 网关判定未鉴权（手机 token 缺失/失效）⇒ 回配对页，别在这里刷重试。
+      useAuthStore.getState().noteApiError(e);
       set({ loading: false, error: (e as Error).message });
       if (sessionsRetries < 5) {
         sessionsRetries += 1;

@@ -37,6 +37,9 @@ pub struct AppState {
     pub cancels: Arc<Mutex<HashMap<String, RunHandle>>>,
     /// 确认门 v2（重建）：危险操作执行前请求用户确认的挂起表。
     pub confirm_gate: Arc<crate::confirm::ConfirmGate>,
+    /// 设备鉴权运行时态（配对码 / SSE 一次性票据）；设备档案在 `devices` 表。
+    /// 回环来源免鉴权，非回环须持有效 token —— 见 `routes/auth_guard.rs`。
+    pub auth: Arc<crate::auth::AuthStore>,
 }
 
 impl AppState {

@@ -486,6 +486,36 @@ pub fn host_mismatch(provider_id: &str, url: &str) -> Option<String> {
     None
 }
 
+/// `base_url` 归一化：去尾部 `/` + 小写。
+/// 白名单比对与"前端回显"判定共用同一口径，避免两处各写一份比较。
+pub fn normalize_base_url(url: &str) -> String {
+    url.trim_end_matches('/').to_ascii_lowercase()
+}
+
+/// 内置厂商档案登记的全部 `base_url`（**真白名单的单一来源**，供诊断/测试列举）。
+pub fn known_base_urls() -> Vec<String> {
+    provider_list().iter().map(|p| p.base_url.clone()).collect()
+}
+
+/// 值是否为档案登记过的 `base_url`。
+///
+/// ⚠️ 这是**枚举式**判定（"必须等于档案里存在的那个"），**不是**排除式（"不是别家官方 host 就行"）。
+/// 后者正是原审计指出的漏洞：`host_mismatch` 只挡"指向别家**官方** host"，
+/// 于是攻击者自己的域名（如 `https://evil.tld/v1`）既不是别家 host、格式也合法 ⇒ 能通过
+/// ⇒ 把 `base_url` 指过去就是坐等 API Key 外泄。
+///
+/// 集合来源：`known_base_urls()`（= `provider_list()`）—— `providers/` 目录下 *.json 经 catalog
+/// 加载后的权威值（目录缺失时由 `default_catalog()` 兜底并写盘），即界面「厂商分组」用的同一份数据。
+pub fn is_known_base_url(url: &str) -> bool {
+    let want = normalize_base_url(url);
+    if want.is_empty() {
+        return false;
+    }
+    known_base_urls()
+        .iter()
+        .any(|b| normalize_base_url(b) == want)
+}
+
 /// 廉价模型（短输出辅助任务用）：从档案里挑一个"声明了 cheap_model"的厂商。
 pub fn cheap_model_of(has_key: impl Fn(&str) -> bool, main: &str) -> Option<String> {
     let c = load_catalog();

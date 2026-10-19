@@ -10,6 +10,7 @@ pub mod memory;
 pub mod orchestration;
 pub mod session_title;
 pub mod planning;
+pub mod progress;
 pub mod specs;
 
 // ── 旧路径兼容层 ──

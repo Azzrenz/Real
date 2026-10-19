@@ -6,6 +6,8 @@ import { invoke } from '@tauri-apps/api/core';
 import { FilePreview } from './FilePreview';
 import { FilesPanel } from './dock/FilesPanel';
 import { TaskPanel } from './dock/TaskPanel';
+import { ProgressPanel } from './dock/ProgressPanel';
+import { useProgressBadge, useProgressPolling } from './dock/progressStore';
 import { ArtifactsPanel } from './dock/ArtifactsPanel';
 import { Icon } from '../shared/ui/icons';
 import type { IconName } from '../shared/ui/icons';
@@ -23,8 +25,7 @@ declare global {
     __REAL_DOCK_FILE__?: string | null;
   }
 }
-
-type TabId = 'files' | 'task' | 'artifacts';
+type TabId = 'files' | 'task' | 'artifacts' | 'progress';
 
 /** Mirrors the shell's GitState. Status codes are passed through raw (` M` / `??` / `A `), because */
 interface GitChange {
@@ -42,6 +43,7 @@ const TABS: { id: TabId; label: string; icon: IconName }[] = [
   { id: 'files', label: '文件', icon: 'folder' },
   { id: 'task', label: '任务', icon: 'list' },
   { id: 'artifacts', label: '产物', icon: 'doc' },
+  { id: 'progress', label: '进度', icon: 'target' },
 ];
 
 /** Last segment of a path -- what a file tab shows. */
@@ -55,6 +57,10 @@ export function DockWindow() {
   // useT subscribes to the language, so the panel re-renders when the main window pushes a change.
   const t = useT();
   const win = () => getCurrentWindow();
+  // 进度徽标要跟面板看同一份数据；轮询挂在这一层而不是面板里 —— 侧栏窗口常驻，
+  // 而「进度」页可能压根没打开过，徽标恰恰是给「没打开」的时候看的。
+  useProgressPolling();
+  const badge = useProgressBadge();
   const [tab, setTab] = useState<TabId>('files');
   // Every opened file is a tab, and the last one opened is the one on screen -- the same model the
   // editor next door uses. Opening a second file must never mean losing the first.
@@ -296,6 +302,15 @@ export function DockWindow() {
             >
               <Icon name={x.icon} size={18} />
               <span className="dock-tab-label">{t(x.label)}</span>
+              {x.id === 'progress' && badge && (
+                <span className={`dock-tab-badge is-${badge.kind}`}>
+                  {badge.kind === 'done'
+                    ? '✓'
+                    : badge.pct === null
+                      ? '●'
+                      : `${Math.round(badge.pct)}%`}
+                </span>
+              )}
             </button>
           ))}
           {/* The toggle lives at the foot of the rail it collapses, so the control sits with the
@@ -426,6 +441,7 @@ export function DockWindow() {
               {tab === 'files' && <FilesPanel activePath={path} onOpen={openFile} />}
               {tab === 'task' && <TaskPanel onOpen={openFile} />}
               {tab === 'artifacts' && <ArtifactsPanel onOpen={openFile} />}
+              {tab === 'progress' && <ProgressPanel />}
             </>
           )}
         </main>

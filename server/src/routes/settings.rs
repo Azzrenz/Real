@@ -4,11 +4,14 @@ use crate::db::repos;
 use crate::error::{AppError, AppResult};
 use crate::config::settings::mask_key;
 use crate::model::catalog::{base_slot, key_slot};
+use crate::routes::auth_guard;
 use crate::state::AppState;
-use axum::extract::State;
+use axum::extract::{ConnectInfo, State};
+use axum::http::HeaderMap;
 use axum::Json;
 use serde::Deserialize;
 use serde_json::{json, Value};
+use std::net::SocketAddr;
 
 /// ⚠️ `allow(dead_code)`：本结构是**请求契约** —— 字段的意义是"接受前端提交"，
 #[allow(dead_code)]
@@ -120,7 +123,28 @@ fn env_key_for_provider(state: &AppState, provider: &str) -> Option<String> {
     state.cfg.deepseek_api_key.clone()
 }
 
-pub async fn get(State(state): State<AppState>) -> AppResult<Json<Value>> {
+/// 本机路径类字段的远程收敛（**纯函数**，便于直测）：
+/// 非回环来源 ⇒ 两字段都回 `null`（不泄露磁盘布局）；本机 ⇒ 原样返回。
+fn local_paths_view(remote: bool, data_dir: Option<String>, data_root: String) -> (Value, Value) {
+    if remote {
+        (Value::Null, Value::Null)
+    } else {
+        (json!(data_dir), Value::String(data_root))
+    }
+}
+
+/// GET /api/settings —— 本机：完整返回；远程（非回环）：不下发本机路径类字段（见 `build_settings`）。
+pub async fn get(
+    State(state): State<AppState>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+) -> AppResult<Json<Value>> {
+    let remote = !auth_guard::is_loopback_request(Some(addr), &headers);
+    build_settings(&state, remote).await
+}
+
+/// 组装设置响应。`remote` = 非回环来源（决定本机绝对路径类字段是否下发）。
+async fn build_settings(state: &AppState, remote: bool) -> AppResult<Json<Value>> {
     let s = state.settings.read().await;
     let masked = mask_key(s.api_key.as_deref());
     // 各厂商是否已有凭据档案（前端"切到该厂商是否需要补 Key"据此判断）。
@@ -168,6 +192,12 @@ pub async fn get(State(state): State<AppState>) -> AppResult<Json<Value>> {
         .ok()
         .flatten()
         .unwrap_or_else(|| "shared".to_string());
+    // 本机路径类字段：远程（非回环）一律收敛为 null（不泄露磁盘布局），本机原样。
+    let (data_dir_view, data_root_view) = local_paths_view(
+        remote,
+        crate::path::data_root::get_data_dir_setting(),
+        crate::path::data_root::data_root().display().to_string(),
+    );
     Ok(Json(json!({
         "llm_mode": match s.llm_mode { crate::config::LlmMode::Real => "real", _ => "mock" },
         "model": s.model,
@@ -210,9 +240,9 @@ pub async fn get(State(state): State<AppState>) -> AppResult<Json<Value>> {
         // 出厂默认值快照（九个键与上面同构）：面板文案里的"默认 X"从这里取，
         "tuning_defaults": serde_json::to_value(crate::config::settings::tuning_defaults())
             .unwrap_or(Value::Null),
-        // 数据目录（设置面板「数据目录」；标记值 + 当前生效根）
-        "data_dir": crate::path::data_root::get_data_dir_setting(),
-        "data_root_effective": crate::path::data_root::data_root().display().to_string(),
+        // 数据目录（标记值 + 当前生效根）——均本机绝对路径，远程收敛为 null（见 `local_paths_view`）
+        "data_dir": data_dir_view,
+        "data_root_effective": data_root_view,
         "server": { "host": state.cfg.host, "port": state.cfg.port },
     })))
 }
@@ -261,6 +291,8 @@ async fn switch_model_for_session(
 
 pub async fn put(
     State(state): State<AppState>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     Json(req): Json<UpdateSettingsReq>,
 ) -> AppResult<Json<Value>> {
     // 切换目标 provider（请求带 model 用之，否则当前模型）——校验段要用，先算
@@ -275,9 +307,27 @@ pub async fn put(
     let stale_echo = req
         .base_url
         .as_deref()
-        .map(|u| u.trim_end_matches('/') == current_base_snapshot.trim_end_matches('/'))
+        .map(|u| auth_guard::is_base_url_echo(u, &current_base_snapshot))
         .unwrap_or(false);
     let base_override: Option<&String> = if stale_echo { None } else { req.base_url.as_ref() };
+
+    // ---- 高风险字段收口（远程受限；本机放开）----
+    // `base_url`：**枚举式白名单** —— 远程只许改成内置厂商档案里登记的地址（远程跨厂商切模型要它）。
+    //   为什么不能只判"格式合法 / 不是别家官方 host"：那正是原审计指出的漏洞 ——
+    //   攻击者自己的域名两者都能过（`host_mismatch` 只挡别家官方 host）⇒ API Key 会被送去攻击者服务器。
+    // `data_dir`：一律仅本机（改数据根 = 重启后换库 ⇒ 等于数据丢失）。
+    // 判「是否本机」必须走 auth_guard 的**生效客户端地址**口径 —— 否则 `tailscale serve`
+    // 这类本机代理会把远程调用还原成回环，这里的收口会被绕过。
+    let remote = !auth_guard::is_loopback_request(Some(addr), &headers);
+    if let Some(field) = auth_guard::local_only_field(remote, req.data_dir.is_some()) {
+        return Err(AppError::Forbidden(format!("{field} 仅限本机修改")));
+    }
+    auth_guard::check_base_url_change(
+        remote,
+        base_override.map(|s| s.as_str()),
+        crate::model::catalog::is_known_base_url,
+    )
+    .map_err(|deny| AppError::Forbidden(deny.message().to_string()))?;
 
     // ---- 校验 ----
     if let Some(m) = &req.llm_mode {
@@ -523,7 +573,8 @@ pub async fn put(
         }
     }
 
-    get(State(state)).await
+    // 复用 `build_settings`：`put` 已算出 `remote`，响应口径与 `GET` 完全一致（远程同样不下发路径）。
+    build_settings(&state, remote).await
 }
 
 /// POST /api/settings/test — 探测连通性（按当前模型解析出的端点，与主链路同源）
@@ -567,3 +618,7 @@ pub async fn test(State(state): State<AppState>) -> AppResult<Json<Value>> {
         }))),
     }
 }
+
+#[cfg(test)]
+#[path = "settings_tests.rs"]
+mod settings_tests;

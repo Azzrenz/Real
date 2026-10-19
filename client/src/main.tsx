@@ -10,6 +10,8 @@ import './styles/shell.css';
 import './styles/chat.css';
 import './styles/settings.css';
 import './styles/file-kind.css';
+// 手机版覆盖层：全部规则都在 @media (max-width: 768px) 内，桌面壳（minWidth 900）不命中。
+import './styles/mobile.css';
 
 declare global {
   interface Window {
