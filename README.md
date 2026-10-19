@@ -1,5 +1,14 @@
 # Real
 
+<p>
+  <a href="https://github.com/Azzrenz/Real/releases/latest"><img alt="Release" src="https://img.shields.io/badge/release-0.1.0-2ea44f"></a>
+  <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-MIT-blue"></a>
+  <img alt="Platform" src="https://img.shields.io/badge/platform-Windows%20%C2%B7%20verified-lightgrey">
+  <img alt="Stack" src="https://img.shields.io/badge/stack-Rust%20%2B%20Tauri%202-orange">
+</p>
+
+**[下载 Windows 便携版（12MB，解压即用）](https://github.com/Azzrenz/Real/releases/latest)** · 不想编译就走这条。
+
 > 让 AI 真正干活的本地 Agent 工作台 —— 确定性收敛循环 · 四件套工具面 · 编制化话术 · 全程可审计
 
 ```
@@ -156,7 +165,6 @@ read · write · modify · run
 
 一次真实任务进行中的样子 —— 用户提问、模型旁白、工具调用，以及被注入的工作规范：
 
-![Real 运行中](screenshots/02-running.png)
 
 ### 收敛循环
 
@@ -296,7 +304,7 @@ Real/
 - WebView2 运行时（离线安装包，Windows 10 老版本也能装）
 
 > 首次启动窗口可能要等几秒：后端要建库、起服务。
-> 没有 API Key 时自动使用内置 mock 模型，全流程可走通。
+> 首次打开先配置 API Key（Settings → Model & credentials），否则发任务会提示未配置。
 
 ### 方式二：一键脚本（Windows，开发者）
 
@@ -311,8 +319,8 @@ Real/
 > **首次运行要等几分钟。** cargo 先编译整个后端，Tauri 再编译桌面壳 ——
 > 那是编译器在干活，不是卡死，让它跑完。
 
-> **没有 API Key 也能跑。** `.env` 里没有有效 Key 时自动使用内置 mock 模型，
-> 全流程可走通。要接真实模型就填 `DEEPSEEK_API_KEY`。
+> **API Key 必填。** 在 `server/.env` 填 `DEEPSEEK_API_KEY`（或智谱的 Key），
+> 也可以在应用的 Settings 里填。没有 Key 时任务会明确报「未配置模型」，不会假装在干活。
 
 日志落在数据根的 `logs/` 下（Windows 默认 `%APPDATA%\real-agent\logs`）。
 后端起不来时脚本会把日志尾部直接打在屏幕上。
@@ -323,7 +331,7 @@ Real/
 # 1. 配置
 cp server/.env.example server/.env
 #    编辑 server/.env，填入 DEEPSEEK_API_KEY
-#    没有 Key 也能跑：把 REAL_LLM_MODE 设为 mock（内置假模型，全流程可走通）
+#    支持 DeepSeek 或智谱 GLM，二选一；Key 在对应平台免费注册申请
 
 # 2. 起后端（终端 A）
 cd server

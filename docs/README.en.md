@@ -68,7 +68,7 @@ No Node.js, no Rust, no runtime needed — the WebView2 runtime is bundled.
 `real-client.exe`. Your data travels with the folder; uninstalling means deleting it.
 
 > First launch takes a few seconds while the backend creates its database and starts local services.
-> **No API key is required** — without one, Real falls back to a built-in mock model so you can walk
+> **An API key is required** — DeepSeek or Zhipu GLM (both free to sign up, pay-as-you-go). Real
 > through every flow before wiring up a real provider.
 
 ### Bring your own model

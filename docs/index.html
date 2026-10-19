@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Real · 让 AI 真正干活的本地 Agent 工作台</title>
+<meta name="description" content="Real 是一个跑在 Windows 上的本地 AI Agent 工作台：给一个文件夹和一句话，它自己读文件、改文件、跑命令，一轮轮改到交付。开源 MIT。">
+<meta property="og:title" content="Real · 让 AI 真正干活的本地 Agent 工作台">
+<meta property="og:description" content="给一个文件夹和一句话，它自己读文件、改文件、跑命令，一轮轮改到交付。">
+<meta property="og:image" content="./assets/01-welcome.png">
+<style>
+  :root{
+    --ink:#14140f; --sub:#5c5c54; --line:#e6e2da; --bg:#fbfaf7; --card:#fff;
+    --accent:#c24b2e; --accent-soft:#fdf1ec;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--ink);line-height:1.7;
+    font-family:"PingFang SC","Microsoft YaHei",-apple-system,BlinkMacSystemFont,sans-serif;
+    -webkit-font-smoothing:antialiased}
+  .wrap{max-width:980px;margin:0 auto;padding:0 24px}
+  header{padding:64px 0 40px}
+  .badges{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:22px}
+  .badge{font-size:12.5px;padding:3px 10px;border:1px solid var(--line);border-radius:999px;
+    background:#fff;color:var(--sub)}
+  h1{font-size:46px;line-height:1.2;letter-spacing:-1px;font-weight:800}
+  h1 span{color:var(--accent)}
+  .lead{font-size:19px;color:var(--sub);margin-top:18px;max-width:660px}
+  .cta{display:flex;gap:12px;flex-wrap:wrap;margin-top:28px}
+  .btn{display:inline-block;padding:13px 22px;border-radius:10px;text-decoration:none;
+    font-size:15.5px;font-weight:600;border:1px solid transparent}
+  .btn.primary{background:var(--ink);color:#fff}
+  .btn.primary:hover{background:#000}
+  .btn.ghost{border-color:var(--line);color:var(--ink);background:#fff}
+  .btn.ghost:hover{border-color:#c9c4ba}
+  .shot{margin:52px 0 0;border:1px solid var(--line);border-radius:14px;overflow:hidden;
+    background:#fff;box-shadow:0 18px 48px rgba(20,20,15,.07)}
+  .shot img{display:block;width:100%}
+  .shot .cap{font-size:13px;color:var(--sub);padding:10px 16px;border-top:1px solid var(--line);background:#f8f6f2}
+  section{padding:56px 0;border-top:1px solid var(--line)}
+  h2{font-size:26px;letter-spacing:-.4px;margin-bottom:8px}
+  .sub{color:var(--sub);margin-bottom:26px}
+  .grid{display:grid;grid-template-columns:repeat(2,1fr);gap:18px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:20px 22px}
+  .card h3{font-size:16px;margin-bottom:6px}
+  .card p{font-size:14.5px;color:var(--sub)}
+  ol.steps{counter-reset:s;list-style:none;display:grid;gap:12px}
+  ol.steps li{counter-increment:s;background:#fff;border:1px solid var(--line);border-radius:12px;
+    padding:16px 18px 16px 56px;position:relative;font-size:15px}
+  ol.steps li::before{content:counter(s);position:absolute;left:16px;top:15px;width:26px;height:26px;
+    border-radius:50%;background:var(--ink);color:#fff;font-size:13.5px;font-weight:700;
+    display:flex;align-items:center;justify-content:center}
+  code{background:#f1eee8;padding:2px 6px;border-radius:4px;font-size:13.5px;
+    font-family:ui-monospace,Consolas,Menlo,monospace}
+  .note{background:var(--accent-soft);border-left:3px solid var(--accent);padding:14px 18px;
+    border-radius:0 8px 8px 0;font-size:14.5px;margin-top:22px}
+  footer{padding:40px 0 64px;color:var(--sub);font-size:13.5px;border-top:1px solid var(--line)}
+  footer a{color:var(--sub)}
+  @media(max-width:720px){
+    h1{font-size:32px} .lead{font-size:16.5px} .grid{grid-template-columns:1fr}
+    header{padding:40px 0 24px} section{padding:40px 0}
+  }
+</style>
+</head>
+<body>
+
+<header class="wrap">
+  <div class="badges">
+    <span class="badge">v0.1.0</span>
+    <span class="badge">MIT</span>
+    <span class="badge">Windows · 已验证</span>
+    <span class="badge">Rust + Tauri 2</span>
+  </div>
+
+  <h1>让 AI 真正<span>干活</span>的<br>本地 Agent 工作台</h1>
+  <p class="lead">给一个文件夹和一句话。它自己读文件、改文件、跑命令、看报错，一轮一轮改到真正交付——不是聊天，是收敛。</p>
+
+  <div class="cta">
+    <a class="btn primary" href="https://github.com/Azzrenz/Real/releases/latest">下载 Windows 便携版 · 12MB</a>
+    <a class="btn ghost" href="https://github.com/Azzrenz/Real">在 GitHub 上看源码</a>
+  </div>
+
+  <div class="shot">
+    <img src="./assets/01-welcome.png" alt="Real 主界面">
+    <div class="cap">主界面：左侧会话列表，中间对话与工具卡片，底部是派活的输入框</div>
+  </div>
+</header>
+
+<section class="wrap">
+  <h2>它和聊天窗的区别</h2>
+  <p class="sub">四件事决定了它能不能真的把活干完。</p>
+  <div class="grid">
+    <div class="card">
+      <h3>收敛循环，不是一次问答</h3>
+      <p>每轮要么真的改了文件，要么记为「无改动」。只说「改好了」却没动文件的那一轮，不算数。</p>
+    </div>
+    <div class="card">
+      <h3>改了没有，不靠模型自己申报</h3>
+      <p>工具回执进流，下一轮由系统核验，而不是相信模型的自述。</p>
+    </div>
+    <div class="card">
+      <h3>危险操作有确认门</h3>
+      <p>删除文件、执行 shell 命令前会先问你。确认门不是安全边界，是防手滑。</p>
+    </div>
+    <div class="card">
+      <h3>全程可审计</h3>
+      <p>工具调用、文件写入、命令输出都留成卡片，随时点开回看。</p>
+    </div>
+  </div>
+</section>
+
+<section class="wrap">
+  <h2>三分钟跑起来</h2>
+  <p class="sub">不需要装 Node、Rust 或任何运行环境。</p>
+  <ol class="steps">
+    <li>解压到 <code>D:\Real</code>（路径别带中文），双击 <code>real-client.exe</code></li>
+    <li>申请 API Key（DeepSeek 或智谱 GLM，二选一，约 5 分钟，几块钱起用）</li>
+    <li>Settings → Model &amp; credentials 填入 Key → Test connection → Save，然后 New task 选个文件夹开工</li>
+  </ol>
+  <div class="note">
+    首次启动窗口可能要等几秒：后端要建库、起服务。数据全部落在本机
+    <code>%APPDATA%\real-agent</code>，只有对话内容会发给模型接口。
+  </div>
+</section>
+
+<section class="wrap">
+  <h2>界面</h2>
+  <p class="sub">桌面端为长任务设计：左边会话，中间过程，右边产物。</p>
+  <div class="shot">
+    <img src="./assets/03-settings-model.png" alt="模型与凭据设置">
+    <div class="cap">Settings → Model &amp; credentials：DeepSeek 与智谱 GLM 可同时配置，换模型不用重启</div>
+  </div>
+  <div class="shot">
+    <img src="./assets/04-settings-memory.png" alt="记忆与上下文设置">
+    <div class="cap">记忆与上下文：长任务的知识按需注入，不必每轮都塞满上下文</div>
+  </div>
+</section>
+
+<footer class="wrap">
+  MIT License © 2026 RealBody ·
+  <a href="https://github.com/Azzrenz/Real">GitHub</a> ·
+  <a href="https://github.com/Azzrenz/Real/releases">Releases</a> ·
+  <a href="https://github.com/Azzrenz/Real/blob/main/docs/SECURITY.md">安全说明</a>
+  <br>Windows 完整验证；macOS / Linux 可编译但未实测，如实标注。
+</footer>
+
+</body>
+</html>
