@@ -47,12 +47,12 @@ project memories come along. "Uninstalling" means deleting the folder.
   services. Every launch after that is fast.
 - If the window doesn't appear immediately, **wait ~10 seconds** rather than double-clicking again.
 
-## 3. Do I need an API key?
+## 3. API key (required)
 
-**No.** Without a configured key, Real automatically uses a **built-in mock model** — every flow
-works end to end, the responses just aren't real. It's a fine way to look around first.
+Real does not think on its own — it needs a model as its brain. Without a key, tasks report
+"model not configured" instead of pretending to work.
 
-**To connect a real model:**
+**To connect a model:**
 
 1. Open Real → **Settings** (bottom-left)
 2. Paste a **DeepSeek** API key (get one at https://platform.deepseek.com)

@@ -68,15 +68,14 @@ No Node.js, no Rust, no runtime needed — the WebView2 runtime is bundled.
 `real-client.exe`. Your data travels with the folder; uninstalling means deleting it.
 
 > First launch takes a few seconds while the backend creates its database and starts local services.
-> **An API key is required** — DeepSeek or Zhipu GLM (both free to sign up, pay-as-you-go). Real
-> through every flow before wiring up a real provider.
+> **An API key is required** — DeepSeek or Zhipu GLM (both free to sign up, pay-as-you-go).
 
 ### Bring your own model
 
 **Two providers ship built in**: DeepSeek and Zhipu GLM — the model chip at the bottom of the app
 switches between them in one click (the backend swaps both endpoint and key together).
 
-To add a **third** provider (Kimi, Qwen, a self-hosted proxy — anything), you **don't touch code**:
+To add a **third** provider (any OpenAI-compatible endpoint or self-hosted proxy), you **don't touch code**:
 
 1. Drop a `<vendor-id>.json` into `server/assets/providers/`
 2. Restart Real (the startup log prints a line when it picks the file up)
