@@ -9,6 +9,9 @@
 
 **[下载 Windows 便携版（12MB，解压即用）](https://github.com/Azzrenz/Real/releases/latest)** · 不想编译就走这条。
 
+> **项目在持续开发中**，功能还在往上加，接口和界面可能调整。当前版本可以正常使用；
+> 想要稳定版请从 [Releases](https://github.com/Azzrenz/Real/releases) 下载，跟着 `main` 走则是开发中版本。
+
 > 让 AI 真正干活的本地 Agent 工作台 —— 确定性收敛循环 · 四件套工具面 · 编制化话术 · 全程可审计
 
 ```
