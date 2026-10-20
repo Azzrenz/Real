@@ -12,9 +12,9 @@
 
 | 要找 | 先去哪 |
 |---|---|
-| Real 本体代码 | `D:\Real`（git 仓；server=Rust，client=Tauri） |
-| 话术（prompt）工程 | `D:\Real\server\prompts\`（治理规范 `README.md`，正文在 `workflow/` `tools/`） |
-| 工作规范（specs） | `D:\Real\server\specs\rules\`（注册表 `src/agent/specs.rs` 定触发词） |
+| Real 本体代码（仅开发者场景） | 仓库根目录（server=Rust，client=Tauri）；**发行版里没有源码**，用户机器上不要去找 |
+| 话术（prompt）工程（仅开发者场景） | 仓库根下 `server/prompts/`（治理规范 `README.md`，正文在 `workflow/` `tools/`）；发行版已编译进程序 |
+| 工作规范（specs）（仅开发者场景） | 仓库根下 `server/specs/rules/`（注册表 `src/agent/specs.rs` 定触发词）；发行版已编译进程序 |
 | 常用脚本 | `%APPDATA%\real-agent\scripts\` |
 | 用户项目的产物 | **本轮项目根** |
 | 记忆 / 日志 | `%APPDATA%\real-agent\projects\<项目>\longterm\`、`tasks\<会话>\` |
