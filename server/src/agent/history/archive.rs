@@ -373,12 +373,8 @@ pub(crate) async fn archive_old_body(
     // 记账仍用 items 的真实体积（改写前后差值才是真效果），与判据分开。
     let before_bytes = items_bytes(items);
     // 回合起点在本函数内重算：调用点已移到所有改写之后，调用方的 user_idx 不再适用
-    let user_idx: Vec<usize> = items
-        .iter()
-        .enumerate()
-        .filter(|(_, it)| matches!(it, InputItem::Message { role, .. } if role == "user"))
-        .map(|(i, _)| i)
-        .collect();
+    // （用 `user_positions`：当轮帧挂在 user 角色下但不是回合起点，算进来会让"保留最近 N 回合"提前触发）
+    let user_idx: Vec<usize> = super::item::user_positions(items);
     let keep_recent = crate::config::settings::tuning()
         .archive_keep_recent
         .load(std::sync::atomic::Ordering::Relaxed);

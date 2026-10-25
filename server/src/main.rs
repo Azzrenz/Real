@@ -29,6 +29,8 @@ use std::sync::Arc;
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // ---- 数据根（一次性迁移旧散落点 → 新结构；先于配置/DB 连接） ----
+    // 先迁「旧默认根 → 新默认根」（C 盘 → D:\RealData，幂等、不删源），再迁内部散落点。
+    path::data_root::migrate_from_legacy_root();
     path::data_root::migrate_legacy();
     // 常用脚本库播种（幂等）：把"高频脚本"从"每轮现写"变成"直接调用"——
     path::data_root::seed_scripts();

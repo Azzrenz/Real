@@ -516,6 +516,8 @@ export function SettingsPanel({ onClose }: Props) {
 function DataDirSection() {
   const [dir, setDir] = useState('');
   const [effective, setEffective] = useState('');
+  const [fallback, setFallback] = useState('');
+  const [drives, setDrives] = useState<string[]>([]);
   const [msg, setMsg] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -523,14 +525,16 @@ function DataDirSection() {
     void settingsApi.get().then((s) => {
       setDir(s.data_dir ?? '');
       setEffective(s.data_root_effective ?? '');
+      setFallback(s.data_dir_default ?? '');
+      setDrives(s.data_drives ?? []);
     }).catch(() => setEffective(t('（后端未连接）')));
   }, []);
 
-  const save = async (clear = false) => {
+  const save = async (clear = false, path?: string) => {
     setSaving(true);
     setMsg('');
     try {
-      const s = await settingsApi.put({ data_dir: clear ? '' : dir.trim() });
+      const s = await settingsApi.put({ data_dir: clear ? '' : (path ?? dir).trim() });
       setDir(s.data_dir ?? '');
       setEffective(s.data_root_effective ?? '');
       setMsg(t('已保存——重启 Real 后生效，数据将迁移到新目录'));
@@ -541,20 +545,49 @@ function DataDirSection() {
     }
   };
 
+  // 盘符 → 该盘下的默认落点（叶子目录固定叫 RealData）
+  const leaf = (fallback.split(/[\\/]/).filter(Boolean).pop() || 'RealData');
+  const pickDrive = (d: string) => {
+    const p = `${d}\\${leaf}`;
+    setDir(p);
+    void save(false, p);
+  };
+
   return (
     <section className="settings-sec">
       <div className="sec-title">{t('数据目录')}</div>
       <label className="field">
         <span className="field-label">{t('日志 / spill / 数据库存放根')}</span>
+        {drives.length > 0 && (
+          <div
+            className="settings-actions"
+            style={{ justifyContent: 'flex-start', gap: 6, marginBottom: 6 }}
+          >
+            {drives.map((d) => (
+              <button
+                key={d}
+                className={dir.trim().toUpperCase().startsWith(d.toUpperCase()) ? 'btn primary' : 'btn'}
+                disabled={saving}
+                title={`${d}\\${leaf}`}
+                onClick={() => pickDrive(d)}
+              >
+                {t('{d} 盘', { d: d.replace(':', '') })}
+              </button>
+            ))}
+          </div>
+        )}
         <input
           className="input mono"
           value={dir}
-          placeholder={t('留空 = 默认（{dir}）', { dir: effective || '%APPDATA%\\real-agent' })}
+          placeholder={t('留空 = 默认（{dir}）', { dir: fallback || effective })}
           onChange={(e) => setDir(e.target.value)}
         />
         <p className="field-note">
-          {t('安装目录只放程序本体；运行产生的数据统一写数据根。留空用默认位置；改后需重启——启动时自动把旧数据迁入新目录。环境变量 REAL_DATA_DIR 优先级更高。')}
+          {t('运行数据（数据库 / 日志 / spill / 技能 / 厂商档案）默认落在 {dir}，安装目录只放程序本体。改后需重启——启动时自动把旧目录数据迁入新目录，源目录保留可回滚。环境变量 REAL_DATA_DIR 优先级更高。', { dir: fallback || effective })}
         </p>
+        {effective && (
+          <p className="field-note mono">{t('当前生效：{dir}', { dir: effective })}</p>
+        )}
       </label>
       <div className="settings-actions" style={{ justifyContent: 'flex-start' }}>
         <button className="btn primary" disabled={saving} onClick={() => void save(false)}>
@@ -562,7 +595,7 @@ function DataDirSection() {
         </button>
         {dir && (
           <button className="btn" disabled={saving} onClick={() => void save(true)}>
-            {t('恢复默认')}
+            {t('回到默认位置')}
           </button>
         )}
         {msg && <span className={`save-msg ${msg.startsWith(t('保存失败')) ? 'err' : ''}`}>{msg}</span>}

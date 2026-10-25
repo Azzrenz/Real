@@ -159,18 +159,33 @@ pub struct UserRule {
     pub source: String,
 }
 
+/// 学习规则落位：**数据根** `config/verify_rules.json`（默认 `D:\RealData\config`）。
+/// 旧位置在 C 盘用户目录，换根后仍作为**只读回落**——否则用户攒了半年的规则会"消失"。
 fn user_rules_path() -> PathBuf {
-    let base = std::env::var("APPDATA")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| std::env::temp_dir());
-    base.join("real-agent").join("verify_rules.json")
+    let dir = crate::path::data_root::data_root().join("config");
+    let _ = std::fs::create_dir_all(&dir);
+    dir.join("verify_rules.json")
 }
 
-/// 读取用户学习规则（文件不存在/损坏 → 空表，不 panic）
-pub fn load_user_rules() -> Vec<UserRule> {
-    std::fs::read_to_string(user_rules_path())
+fn legacy_rules_path() -> Option<PathBuf> {
+    std::env::var("APPDATA")
         .ok()
-        .and_then(|t| serde_json::from_str::<Vec<UserRule>>(&t).ok())
+        .map(PathBuf::from)
+        .map(|b| b.join("real-agent").join("verify_rules.json"))
+}
+
+/// 读取用户学习规则（新位不在 → 回落旧位；都没有/损坏 → 空表，不 panic）
+pub fn load_user_rules() -> Vec<UserRule> {
+    let parse = |p: &std::path::Path| -> Option<Vec<UserRule>> {
+        std::fs::read_to_string(p)
+            .ok()
+            .and_then(|t| serde_json::from_str::<Vec<UserRule>>(&t).ok())
+    };
+    if let Some(v) = parse(&user_rules_path()) {
+        return v;
+    }
+    legacy_rules_path()
+        .and_then(|p| parse(&p))
         .unwrap_or_default()
 }
 

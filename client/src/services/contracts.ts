@@ -241,6 +241,10 @@ export interface Settings {
   tuning_defaults?: TuningSnapshot;
   data_dir?: string | null;
   data_root_effective?: string;
+  /** Factory default data root (D:\RealData on a machine with a D drive); null for remote clients. */
+  data_dir_default?: string | null;
+  /** Drive letters available for the data root, e.g. ["C:", "D:"]; null for remote clients. */
+  data_drives?: string[] | null;
   server: { host: string; port: number };
 }
 

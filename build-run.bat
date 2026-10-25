@@ -59,18 +59,29 @@ call cargo build
 if errorlevel 1 goto fail
 
 echo [5/5] Starting backend and desktop shell...
-if not exist "%APPDATA%\real-agent\logs" mkdir "%APPDATA%\real-agent\logs"
-set "LOG=%APPDATA%\real-agent\logs\backend.log"
+rem Data root -- same resolution order as the backend (server/src/path/data_root.rs):
+rem   REAL_DATA_DIR > %APPDATA%\real-agent\data_dir.txt > D:\RealData > %APPDATA%\real-agent
+rem The backend defaults to the D drive now; this script has to follow, otherwise the
+rem log lands in the old C-drive folder and the panel's "data directory" looks empty.
+set "DATA_ROOT="
+if defined REAL_DATA_DIR set "DATA_ROOT=%REAL_DATA_DIR%"
+if not defined DATA_ROOT if exist "%APPDATA%\real-agent\data_dir.txt" call :read_marker
+if not defined DATA_ROOT if exist "D:\" set "DATA_ROOT=D:\RealData"
+if not defined DATA_ROOT set "DATA_ROOT=%APPDATA%\real-agent"
+set "LOGDIR=%DATA_ROOT%\logs"
+echo        data root: %DATA_ROOT%
+if not exist "%LOGDIR%" mkdir "%LOGDIR%"
+set "LOG=%LOGDIR%\backend.log"
 rem Log rotation. backend.log can be left locked by a stray process that
 rem inherited the handle from an earlier run: cmd then cannot open it, the
 rem whole command dies, and the server never starts. Test file-system state
 rem instead of errorlevel, because cmd does not always set errorlevel when a
 rem redirect target cannot be opened.
 if not exist "%LOG%" goto log_ready
-move /y "%LOG%" "%APPDATA%\real-agent\logs\backend-prev.log" >nul 2>&1
+move /y "%LOG%" "%LOGDIR%\backend-prev.log" >nul 2>&1
 if not exist "%LOG%" goto log_ready
 for /f %%i in ('powershell -NoProfile -Command "Get-Date -Format yyyyMMdd-HHmmss"') do set "STAMP=%%i"
-set "LOG=%APPDATA%\real-agent\logs\backend-%STAMP%.log"
+set "LOG=%LOGDIR%\backend-%STAMP%.log"
 echo        [WARN] backend.log is locked by a stray process, writing to:
 echo               %LOG%
 :log_ready
@@ -126,6 +137,11 @@ echo.
 echo Build failed. Check the output above.
 pause
 exit /b 1
+
+:read_marker
+rem First line of the marker file = data root chosen in the settings panel (empty = unset)
+for /f "usebackq delims=" %%L in ("%APPDATA%\real-agent\data_dir.txt") do if not defined DATA_ROOT set "DATA_ROOT=%%L"
+goto :eof
 
 :eof
 endlocal

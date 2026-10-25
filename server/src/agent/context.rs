@@ -44,8 +44,15 @@ pub static CONVERGENT_SYSTEM_PROMPT: std::sync::LazyLock<&'static str> =
             include_str!("../../prompts/workflow/output_discipline.md"),
             "output_discipline",
         );
+        // 答复格式（最终回复写多长、写什么）：放在**最末**——它是收尾那一刻才用得上的规则，
+        // 越靠后越进模型的近因窗口；放进固定前缀而不是每轮帧，是因为前缀缓存要逐字节稳定。
+        let answer = section(
+            include_str!("../../prompts/workflow/output_discipline.md"),
+            "answer",
+        );
         Box::leak(
-            format!("{persona}\n\n{discipline}\n\n{narration}\n\n{journal}").into_boxed_str(),
+            format!("{persona}\n\n{discipline}\n\n{narration}\n\n{journal}\n\n{answer}")
+                .into_boxed_str(),
         )
     });
 
@@ -113,7 +120,7 @@ mod context_tests {
             ),
             (
                 include_str!("../../prompts/workflow/output_discipline.md"),
-                &["output_discipline"],
+                &["output_discipline", "answer"],
             ),
             (
                 include_str!("../../prompts/workflow/mirror.md"),
@@ -185,13 +192,27 @@ mod context_tests {
             assert!(n.contains(k), "旁白排版纪律缺失：{k}（09-11 用户实报，09-16 曾被瘦身抹掉）");
         }
         assert!(
-            n.contains("归工具调用的 `reason`")
-                || n.contains("「这一步要做什么」归工具调用的"),
-            "开场条必须与 §四 分工对齐：意图归 reason，旁白只说方向与依据"
+            n.contains("reason` 是工具行的") || n.contains("归工具调用的 `reason`"),
+            "开场条必须与 §四 分工对齐：意图归 reason 标题，旁白只说看到什么、因此怎么走"
         );
         assert!(
             n.contains("与「同批发齐」共存"),
             "必须给「一轮发多个调用」时的旁白写法——否则同批发齐会把旁白的位置挤没"
+        );
+    }
+
+    /// 旁白是**每轮义务**，不是有心情才写：模型把它当可选后，133 个工具轮里只有 4 轮开口。
+    #[test]
+    fn narration_is_a_per_round_obligation() {
+        let n = section(include_str!("../../prompts/workflow/narration.md"), "narration");
+        assert!(n.contains("每轮都要有"), "必须写成义务：{n}");
+        assert!(
+            n.contains("用户看不到工具参数"),
+            "要给理由（用户只看得到这两句），否则模型认为不发一言也不影响交付"
+        );
+        assert!(
+            n.contains("不能顶替旁白"),
+            "reason 顶替旁白是最常见的省事方式，必须点名禁掉"
         );
     }
 
@@ -262,5 +283,56 @@ mod context_tests {
                 "旧骨架写法 `{old}` 又出现了：短标签会被原样抄进思考给用户看，或把长度放开"
             );
         }
+    }
+
+    /// 答复纪律：最终回复是交付物，**必须带硬上限**，且路径引用要有预算。
+    /// 这条曾被「瘦身」静默抹掉一次（system.md 还在引用它），所以用测试钉住。
+    #[test]
+    fn answer_discipline_caps_length() {
+        let p = *CONVERGENT_SYSTEM_PROMPT;
+        assert!(p.contains("【答复纪律】"), "答复纪律段未注入系统提示");
+        assert!(
+            p.contains("第一行给结论"),
+            "必须钉住「第一行给结论」——否则模型又从背景讲起"
+        );
+        assert!(
+            p.contains("≤ 10 行"),
+            "必须给长度硬上限（具体行数）：只写「简明」「一屏」等于没写"
+        );
+        assert!(
+            p.contains("路径预算 ≤ 2 个"),
+            "路径引用必须有预算——用户实报「引用路径太多」（单条回复 5–8 个绝对路径）"
+        );
+        assert!(
+            p.contains("不分节"),
+            "禁分节：模型默认把答复写成「一、二、三」的论文骨架，这正是「啰嗦」的主要来源"
+        );
+        assert!(
+            p.contains("发送前数一遍"),
+            "要自检动作：模型不会主动数行数，得让它数"
+        );
+        assert!(
+            p.contains("已说过的判断再说一遍"),
+            "重复叙述是长回复的主要来源，必须显式禁掉"
+        );
+        // 位置纪律：答复纪律要压在系统提示**末尾**（近因），不夹在人格与旁白之间
+        assert!(
+            p.ends_with(super::section(include_str!("../../prompts/workflow/output_discipline.md"), "answer").trim()),
+            "答复纪律必须排在系统提示最末，收尾时才在近因窗口里"
+        );
+    }
+
+    /// 光靠系统提示里远处的规则不够（实测仍写 16–23 行）——落笔那一刻的**近因提醒**必须还在。
+    #[test]
+    fn round_frame_carries_answer_reminder() {
+        let frame = super::section(include_str!("../../prompts/workflow/round_frame.md"), "frame");
+        assert!(
+            frame.contains("≤10 行") && frame.contains("路径 ≤2 个"),
+            "当轮帧末尾必须提醒行数与路径预算：这是唯一贴着「落笔」的位置"
+        );
+        assert!(
+            !frame.contains("收敛提醒"),
+            "给模型的注记必须留在 HTML 注释里，不许漏进提示词"
+        );
     }
 }

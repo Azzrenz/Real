@@ -5,6 +5,12 @@ use std::path::PathBuf;
 /// 用户在设置面板选定的数据目录——落位为默认根下的标记文件 data_dir.txt。
 const MARKER_FILE: &str = "data_dir.txt";
 
+/// **出厂默认数据根**的目录名。
+pub const DEFAULT_ROOT_LEAF: &str = "RealData";
+
+/// 默认所在盘符：用户拍板默认落 D 盘（不再默认 C 盘，C 盘重装即丢）。
+pub const PREFERRED_DRIVE: &str = "D:";
+
 fn marker_path() -> Option<PathBuf> {
     if let Ok(appdata) = std::env::var("APPDATA") {
         if !appdata.trim().is_empty() {
@@ -13,6 +19,61 @@ fn marker_path() -> Option<PathBuf> {
     }
     // 无 APPDATA（极简环境）→ 项目根 .real 下
     Some(crate::tools::fs_read::project_root().join(".real").join(MARKER_FILE))
+}
+
+/// 旧默认位置：`%APPDATA%\real-agent`（重装系统会一起消失——正因如此才不再做默认）。
+pub fn legacy_root() -> PathBuf {
+    if let Ok(appdata) = std::env::var("APPDATA") {
+        if !appdata.trim().is_empty() {
+            return PathBuf::from(appdata).join("real-agent");
+        }
+    }
+    crate::tools::fs_read::project_root().join(".real")
+}
+
+/// 指定盘下的默认数据根（设置面板「选盘」用）：`X:\RealData`。
+pub fn root_for_drive(drive: &str) -> String {
+    let d = drive.trim().trim_end_matches(['\\', '/']);
+    format!("{d}\\{DEFAULT_ROOT_LEAF}")
+}
+
+/// 当前可用的盘符（设置面板给选项；Windows 上按 C..Z 探测根目录是否可达）。
+pub fn available_drives() -> Vec<String> {
+    let mut out = Vec::new();
+    for c in b'A'..=b'Z' {
+        let d = format!("{}:", c as char);
+        if std::path::Path::new(&format!("{d}\\")).is_dir() {
+            out.push(d);
+        }
+    }
+    out
+}
+
+/// 出厂默认数据根：`D:\RealData`；D 盘不可用（只有 C 盘的机器）时回落旧位置。
+pub fn default_data_root() -> PathBuf {
+    preferred_root().unwrap_or_else(legacy_root)
+}
+
+/// 默认根的**路径提示**（纯粹回答"默认会在哪"，不建目录、不触盘）——设置面板展示用。
+pub fn default_data_root_hint() -> String {
+    if let Ok(v) = std::env::var("REAL_DATA_DEFAULT") {
+        if v.trim().eq_ignore_ascii_case("appdata") {
+            return legacy_root().display().to_string();
+        }
+    }
+    root_for_drive(PREFERRED_DRIVE)
+}
+
+fn preferred_root() -> Option<PathBuf> {
+    // 逃生阀：REAL_DATA_DEFAULT=appdata 把默认拉回 %APPDATA%（无 D 盘的机器 / CI）。
+    if let Ok(v) = std::env::var("REAL_DATA_DEFAULT") {
+        if v.trim().eq_ignore_ascii_case("appdata") {
+            return None;
+        }
+    }
+    let p = PathBuf::from(root_for_drive(PREFERRED_DRIVE));
+    // 只判"能不能落"：建目录成功即认定该盘可用（失败=盘不存在/只读/被策略拦）。
+    std::fs::create_dir_all(&p).ok().map(|_| p)
 }
 
 /// 读取设置面板选定的数据目录（未设置 = None）
@@ -46,7 +107,7 @@ fn configured_dir() -> Option<PathBuf> {
     get_data_dir_setting().map(PathBuf::from)
 }
 
-/// 数据根目录（环境变量 REAL_DATA_DIR > 设置面板标记 > %APPDATA%/real-agent > 项目根 .real）
+/// 数据根目录（环境变量 REAL_DATA_DIR > 设置面板标记 > **D:\RealData** > %APPDATA%/real-agent > 项目根 .real）
 pub fn data_root() -> PathBuf {
     if let Ok(dir) = std::env::var("REAL_DATA_DIR") {
         if !dir.trim().is_empty() {
@@ -56,12 +117,7 @@ pub fn data_root() -> PathBuf {
     if let Some(dir) = configured_dir() {
         return dir;
     }
-    if let Ok(appdata) = std::env::var("APPDATA") {
-        if !appdata.trim().is_empty() {
-            return PathBuf::from(appdata).join("real-agent");
-        }
-    }
-    crate::tools::fs_read::project_root().join(".real")
+    default_data_root()
 }
 
 fn ensure(dir: PathBuf) -> PathBuf {
@@ -291,6 +347,40 @@ fn copy_dir_recursive(src: &std::path::Path, dst: &std::path::Path) -> bool {
         }
     }
     ok
+}
+
+/// 首次启动：把**旧默认根**（C 盘 `%APPDATA%\real-agent`）整目录迁入当前数据根（如 `D:\RealData`）。
+///
+/// 契约（**幂等 + 不删源**）：
+/// - 目标根已有 `db/real.db` ⇒ 认为已经迁过/已在用，直接跳过（绝不覆盖用户库）；
+/// - 源根不存在 ⇒ 全新机器，什么都不做；
+/// - 复制连 `-wal` / `-shm` 一起整目录复制（只拷 .db 会丢掉未 checkpoint 的事务）；
+/// - **源保留**：迁移只做加法，用户想回滚就把设置面板改回 C 盘即可；
+/// - 标记文件是"指针"不是数据 —— 不复制进新根（在 D 盘根里它毫无意义且会互相误导）。
+pub fn migrate_from_legacy_root() {
+    let target = data_root();
+    let legacy = legacy_root();
+    if target == legacy {
+        return;
+    }
+    if target.join("db").join("real.db").exists() {
+        return;
+    }
+    if !legacy.is_dir() {
+        return;
+    }
+    if std::fs::create_dir_all(&target).is_err() {
+        tracing::warn!(to = %target.display(), "新数据根不可创建，迁移跳过（继续用旧根）");
+        return;
+    }
+    let ok = copy_dir_recursive(&legacy, &target);
+    let _ = std::fs::remove_file(target.join(MARKER_FILE));
+    tracing::info!(
+        from = %legacy.display(),
+        to = %target.display(),
+        ok,
+        "旧数据根（C 盘）已迁入新默认位置 D 盘——源目录保留，可回滚"
+    );
 }
 
 pub fn migrate_legacy() {

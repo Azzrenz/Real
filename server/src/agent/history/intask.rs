@@ -10,12 +10,9 @@ pub(crate) fn stale_attachments(
     keep_tasks: usize,
     min_saved: usize,
 ) -> usize {
-    let user_idx: Vec<usize> = items
-        .iter()
-        .enumerate()
-        .filter(|(_, it)| matches!(it, InputItem::Message { role, .. } if role == "user"))
-        .map(|(i, _)| i)
-        .collect();
+    // 回合起点用 `user_positions`（已排除当轮帧）：切点若落在帧上，
+    // 保留段会从「（同上一条用户消息）」开始，模型看不到原话 —— 既丢语义又丢前缀。
+    let user_idx: Vec<usize> = user_positions(items);
     if user_idx.len() <= keep_tasks {
         return 0;
     }
@@ -71,8 +68,14 @@ pub(crate) fn stale_attachments(
     potential
 }
 
-/// 帧保留窗口：近 N 个回合内保**帧全貌**（含记忆与命中的规范），更早的只留「本轮用户输入」。
-pub(crate) const STALE_FRAME_KEEP_TASKS: usize = 0;
+/// 帧保留窗口：`usize::MAX` ⇒ **一律不瘦身**（全部保留全貌）。
+///
+/// 历史理由（别再改回 0）：旧做法是「近 N 回合保全貌、更早的只留 goal」，省几 KB。
+/// 但帧现在落 `round_frames`、下一轮按锚点**逐字节重放**——在这里裁剪它，等于让
+/// 「重放内容 ≠ 上一轮真正发出的内容」⇒ 每条历史帧都变成一次断点（单次十几万 token）。
+/// 成本对照：每帧约 1–2KB（全命中约 ¥0.00008），一次断点约 ¥0.28 —— 差三千倍。
+/// 总量交给发送前裁剪（`enforce_token_ceiling` 整条丢弃，切点不会落在帧上）。
+pub(crate) const STALE_FRAME_KEEP_TASKS: usize = usize::MAX;
 
 /// 帧体三段的分界标记 —— **与产出它们的资产一一对应**
 pub(crate) const FRAME_HEAD: &str = "【本轮用户输入】";
@@ -95,6 +98,12 @@ pub(crate) fn trim_stale_frames(
     let mut planned: Vec<(usize, usize, String)> = Vec::new();
     let mut potential = 0usize;
     for (i, it) in items.iter().enumerate().take(keep_from) {
+        // 帧**不瘦身**：它已落 `round_frames`，下一轮按锚点原样重放。
+        // 在这里削它，等于让「重放内容 ≠ 上一轮真正发出的内容」⇒ 每条历史帧都变成一次断点。
+        // 总量交给发送前裁剪（整条丢弃，切点也不会落在帧上）。
+        if super::item::is_round_frame(it) {
+            continue;
+        }
         let InputItem::Message { role, content, .. } = it else {
             continue;
         };

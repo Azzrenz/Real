@@ -58,6 +58,122 @@ pub fn default_timeout_secs() -> u64 {
         .unwrap_or(DEFAULT_TIMEOUT_SECS)
 }
 
+/// 长任务按**进程**等待的总预算（秒）：`REAL_RUN_WAIT_SECS`，默认 30 分钟。
+///
+/// 语义是"最长盯多久"，**不是**"到点就杀"——预算用尽只交还控制权（pid + 日志），进程继续跑。
+pub fn run_wait_budget_secs() -> u64 {
+    std::env::var("REAL_RUN_WAIT_SECS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .filter(|v| *v >= 5)
+        .unwrap_or(30 * 60)
+}
+
+/// 构建/安装类长任务分类（**内核判据，不是提示词建议**）。
+///
+/// 用户拍板：「构建这类等待必须按进程判断，不能按时间判断」——
+/// 而 `background` / `wait_exit` 只是可选参数，模型经常不传 ⇒ `timeout` 到点被
+/// `kill_process_tree` 掐死，长构建白跑。故此处由内核识别，命中即强制"后台 + 等进程退出"，
+/// 模型传什么参数都不改变。
+///
+/// 返回 `Some(理由)` = 命中；`None` = 不干预（交给原超时语义）。
+pub fn process_judged_reason(cmd: &str) -> Option<&'static str> {
+    let l = cmd.to_ascii_lowercase();
+    if l.trim().is_empty() {
+        return None;
+    }
+    // 常驻/监听类（dev server、watch、serve）本质不退出：走 wait_port/wait_http 语义，
+    // 硬等进程退出等于挂死 —— 先排除，再判长任务。
+    // 注意：只匹配**独立词**（" dev" / " serve"），不能匹配 "server"——否则
+    // `cargo build -p real-server` 这类真构建会被误排除。
+    const RESIDENT: &[&str] = &[
+        " dev ",
+        " dev\"",
+        " dev'",
+        "--watch",
+        " watch ",
+        "nodemon",
+        "vite",
+        "next dev",
+        "npm start",
+        "yarn start",
+        "pnpm start",
+        "tauri dev",
+        " serve",
+        "serve ",
+        // 起服务/跑程序：编译后**常驻**，等退出等于挂死 —— 交给 wait_port / wait_http。
+        "cargo run",
+        "docker compose up",
+    ];
+    if RESIDENT.iter().any(|k| l.contains(k)) {
+        return None;
+    }
+    // 长任务：编译 / 链接 / 安装 / 下载 / 打包 / 大目录复制。
+    const LONG: &[(&str, &str)] = &[
+        ("cargo build", "cargo 构建与链接"),
+        ("cargo check --all-targets", "cargo 全目标检查"),
+        ("cargo test", "cargo 测试全量执行"),
+        ("cargo install", "cargo 安装（含编译）"),
+        ("cargo run", "cargo 运行（先编译）"),
+        ("cargo clippy", "cargo clippy 全量检查"),
+        ("tauri build", "Tauri 打包"),
+        ("npm install", "npm 安装依赖"),
+        ("npm i ", "npm 安装依赖"),
+        ("npm ci", "npm 安装依赖"),
+        ("npm run build", "npm 构建"),
+        ("pnpm install", "pnpm 安装依赖"),
+        ("pnpm build", "pnpm 构建"),
+        ("pnpm i ", "pnpm 安装依赖"),
+        ("yarn install", "yarn 安装依赖"),
+        ("yarn build", "yarn 构建"),
+        ("pip install", "pip 安装（含编译轮子）"),
+        ("pip3 install", "pip 安装（含编译轮子）"),
+        ("python -m pip install", "pip 安装（含编译轮子）"),
+        ("python -m pytest", "pytest 全量执行"),
+        ("uv pip", "uv 解析与安装"),
+        ("uv sync", "uv 同步环境"),
+        ("dotnet build", "dotnet 构建"),
+        ("dotnet publish", "dotnet 发布"),
+        ("msbuild", "MSBuild 构建"),
+        ("cmake --build", "CMake 构建"),
+        ("cmake -b", "CMake 配置与构建"),
+        ("gradle", "Gradle 构建"),
+        ("mvn ", "Maven 构建"),
+        ("docker build", "Docker 镜像构建"),
+        ("docker compose up", "Docker 编排启动"),
+        ("go build", "Go 构建"),
+        ("go test", "Go 测试全量执行"),
+        ("node-gyp", "node-gyp 原生编译"),
+        ("git clone", "仓库克隆"),
+        ("winget install", "winget 安装"),
+        ("choco install", "choco 安装"),
+        ("rustup toolchain install", "Rust 工具链安装"),
+        ("ollama pull", "模型权重下载"),
+        ("robocopy", "大目录复制"),
+        ("7z ", "压缩/解压"),
+        ("ffmpeg", "音视频转码"),
+    ];
+    for (pat, why) in LONG {
+        if l.contains(pat) {
+            return Some(why);
+        }
+    }
+    // `make` / `ninja` 太容易误命中（"make sure"），只在**命令位**且后面接的是目标/开关时算数。
+    for seg in l.split("&&").flat_map(|s| s.split('|')).flat_map(|s| s.split(';')) {
+        let mut it = seg.trim().split_whitespace();
+        let first = it.next().unwrap_or("");
+        let rest = it.next().unwrap_or("");
+        if matches!(first, "make" | "make.exe" | "ninja" | "ninja.exe")
+            && (rest.is_empty()
+                || rest.starts_with('-')
+                || matches!(rest, "all" | "build" | "install" | "test" | "clean"))
+        {
+            return Some("make/ninja 构建");
+        }
+    }
+    None
+}
+
 /// 错误摘要通常在输出**尾部**，前截断会砍掉结论导致模型重跑；头保留命令上下文）。
 pub fn truncate_output(s: &str, max: usize) -> String {
     let n = s.chars().count();
@@ -379,6 +495,8 @@ async fn kill_process_tree(child: &mut tokio::process::Child) {
                 .args(["/PID", &pid.to_string(), "/T", "/F"])
                 .stdout(Stdio::null())
                 .stderr(Stdio::null())
+                // 同上：无控制台壳拉起时不弹窗
+                .creation_flags(0x0800_0000)
                 .status()
                 .await;
         }
@@ -452,6 +570,8 @@ async fn wait_for_ready(
         if let Some(proc) = &process {
             if let Ok(o) = Command::new("tasklist")
                 .args(["/FI", &format!("IMAGENAME eq {proc}"), "/NH"])
+                // 同上：无控制台壳拉起时不弹窗
+                .creation_flags(0x0800_0000)
                 .output()
                 .await
             {
@@ -497,13 +617,13 @@ impl BuiltinTool for RunTool {
                 },"required":["code"],"description":"内联脚本（推荐）：代码落临时文件执行，绕开 cmd 引号剥离"},
                 "cwd":{"type":"string","default":".","description":"工作目录（相对项目根；显式传非空值即保留，缺省时后端注入本会话工作区）"},
                 "target":{"type":"string","description":"cwd 的别名；同时传时以 target 为准"},
-                "timeout":{"type":"integer","default":30,"minimum":5,"maximum":600,"description":"超时秒数（5–600）"},
+                "timeout":{"type":"integer","default":30,"minimum":5,"maximum":600,"description":"超时秒数（5–600）。**对构建/安装类长命令不生效**——cargo/npm/pip/tauri/msbuild/docker build/git clone 等由内核自动改为后台 + 按进程退出判定，不再到点杀"},
                 "wait_port":{"type":"integer","minimum":1,"maximum":65535,"description":"等此端口开始监听（1–65535，合法端口区间）"},
                 "wait_http":{"type":"string","description":"等此 URL 返回 200"},
                 "wait_process":{"type":"string","description":"等此进程名出现"},
-                "background":{"type":"boolean","default":false,"description":"后台运行，立即返回 {background,pid,log_file}"},
+                "background":{"type":"boolean","default":false,"description":"后台运行，立即返回 {background,pid,log_file}（构建/安装类由内核自动置真）"},
                 "stop_process":{"type":"integer","minimum":1,"description":"终止指定 PID（≥1，正整数进程号）"},
-                "wait_exit":{"type":"boolean","default":false,"description":"等进程退出（长命令的完成信号）"},
+                "wait_exit":{"type":"boolean","default":false,"description":"等进程退出（长命令的完成信号）。**构建/安装类由内核自动置真，模型无需也不能取消**"},
                 "sample_seconds":{"type":"integer","minimum":1,"maximum":600,"description":"限时采样 N 秒后自动 kill 并返回已捕获输出（1–600）"},
                 "env":{"type":"object","additionalProperties":true,"description":"子进程环境变量"}
             },
@@ -600,11 +720,11 @@ impl BuiltinTool for RunTool {
             .and_then(|v| v.as_u64())
             .unwrap_or_else(default_timeout_secs);
         // 程序/长任务不需要模型拼 PowerShell（$p = Start-Process 撞白名单）或管道挂死。
-        let wait_exit = args
+        let mut wait_exit = args
             .get("wait_exit")
             .and_then(|v| v.as_bool())
             .unwrap_or(false);
-        let background = args
+        let mut background = args
             .get("background")
             .and_then(|v| v.as_bool())
             .unwrap_or(false);
@@ -986,6 +1106,9 @@ impl BuiltinTool for RunTool {
             c.arg("-c").arg(command);
             c
         };
+        // CREATE_NO_WINDOW：壳是 GUI 进程、自身没有控制台；这里往下 exec 的 bash / powershell /
+        // node / cmd / python 若不带这个标志，每条命令都会单独弹出一个黑色窗口。
+        cmd_builder.creation_flags(0x0800_0000);
         if !extra_paths.is_empty() {
             let mut path = std::env::var_os("PATH").unwrap_or_default();
             for p in &extra_paths {
@@ -1039,6 +1162,26 @@ impl BuiltinTool for RunTool {
                 cmd_builder.env("PYTHONPATH", pp);
             }
         }
+        // ── 内核强制：构建/安装类长任务按**进程**判定，不给模型「用时间等」的选项 ──
+        //
+        // 为什么必须在内核里做（而不是提示词里写一句"记得传 wait_exit"）：
+        // `background` / `wait_exit` 都只是**可选参数**，模型经常不传 ⇒ 落到前台
+        // `timeout` 语义 ⇒ 到点 `kill_process_tree` ⇒ 长构建白跑、还带回一份半截日志。
+        // 用户原话：「我已经写好了，但就是没有办法，他们不怎么执行」——那就由内核执行。
+        let mut forced_process_wait: Option<&'static str> = None;
+        if !is_sampling
+            && stop_process.is_none()
+            && wait_port.is_none()
+            && wait_http.is_none()
+            && wait_process.is_none()
+        {
+            if let Some(why) = process_judged_reason(&effective_command) {
+                background = true;
+                wait_exit = true;
+                forced_process_wait = Some(why);
+            }
+        }
+
         // background=true：spawn 后**立即返回**，不等待退出码——stdout/stderr 落日志文件，
         let background_log: Option<std::path::PathBuf> = if background {
             let log_dir = crate::path::data_root::background_dir();
@@ -1098,24 +1241,51 @@ impl BuiltinTool for RunTool {
             let pid = child.id().unwrap_or(0);
             // wait_exit=true：**等进程退出**（设计决定："判断进程而非靠时间等）——
             if wait_exit {
-                let mut waited = 0u64;
+                // 按**进程退出**判定：只盯 `try_wait`，进程真退出才收工。
+                // 预算（默认 30 分钟，`REAL_RUN_WAIT_SECS`）用尽也**不杀**——
+                // 交还控制权（pid + 日志 + 增长观测），进程继续跑、日志继续写。
+                let budget = run_wait_budget_secs();
+                let started = std::time::Instant::now();
+                let mut last_size = 0u64;
+                let mut last_growth = std::time::Instant::now();
                 let exit_code = loop {
                     match child.try_wait() {
                         Ok(Some(st)) => break st.code().unwrap_or(-1),
                         Ok(None) => {
-                            if waited >= 600 {
+                            // 进展观测：日志还在长 = 进程还在干活（交还控制权时说清"卡住"还是"在跑"）
+                            let size = std::fs::metadata(log_path).map(|m| m.len()).unwrap_or(0);
+                            if size > last_size {
+                                last_size = size;
+                                last_growth = std::time::Instant::now();
+                            }
+                            if started.elapsed() >= Duration::from_secs(budget) {
+                                let idle_secs = last_growth.elapsed().as_secs();
+                                let verdict = if idle_secs < 10 {
+                                    "日志刚有增长 ⇒ 进程在干活，继续等（用 read 看日志尾部）"
+                                } else {
+                                    "日志长时间未增长 ⇒ 疑似挂起，查日志确认后再决定是否 stop_process"
+                                };
                                 let result_json = json!({
                                     "ok": true, "kind": "run_result",
-                                    "data": {"exit_code": -1, "stdout": format!("等待 600s 进程仍未退出（已转后台继续跑）：pid={pid}
-日志：{}
-后续用 run({{\"command\":\"type 日志路径\"}}) 查进度，或 stop_process 终止。", log_path.display()), "stderr": "", "cwd": workdir.display().to_string(), "command": effective_command, "background": true, "pid": pid, "log_file": log_path.display().to_string()},
-                                    "warnings": ["wait_exit 到硬上限：进程未退出，已转后台语义"],
+                                    "data": {
+                                        "exit_code": -1,
+                                        "stdout": format!("进程仍在运行（pid={pid}，已盯 {}s，预算 {budget}s 用尽）——**没有杀它**。\n日志：{}\n近 {idle_secs}s 日志未增长。\n{verdict}", started.elapsed().as_secs(), log_path.display()),
+                                        "stderr": "",
+                                        "cwd": workdir.display().to_string(),
+                                        "command": effective_command,
+                                        "background": true,
+                                        "pid": pid,
+                                        "log_file": log_path.display().to_string(),
+                                        "termination": json!({"kind": "still_running", "waited_secs": started.elapsed().as_secs(), "budget_secs": budget})
+                                    },
+                                    "warnings": [
+                                        format!("按进程等待已到预算上限：交还控制权（**未终止**）。用 proc_status(pid={pid}) 看是 active 还是 idle，再决定是否 stop_process；不要重发同一条命令（会并行起第二份构建）")
+                                    ],
                                     "error": null
                                 });
                                 return Ok(result_json.to_string());
                             }
                             tokio::time::sleep(Duration::from_millis(500)).await;
-                            waited += 1;
                         }
                         Err(e) => return Err(format!("进程状态查询失败: {e}")),
                     }
@@ -1131,8 +1301,13 @@ impl BuiltinTool for RunTool {
                 let result_json = json!({
                     "ok": true, "kind": "run_result",
                     "data": {"exit_code": exit_code, "stdout": format!("[进程已退出，exit={exit_code}] 日志尾部：
-{log_tail}"), "stderr": "", "cwd": workdir.display().to_string(), "command": effective_command, "background": true, "pid": pid, "log_file": log_path.display().to_string()},
-                    "warnings": [],
+{log_tail}"), "stderr": "", "cwd": workdir.display().to_string(), "command": effective_command, "background": true, "pid": pid, "log_file": log_path.display().to_string(), "termination": json!({"kind": "exited", "waited_secs": started.elapsed().as_secs()})},
+                    "warnings": match forced_process_wait {
+                        Some(why) => vec![format!(
+                            "内核按进程判定：{why}——已自动后台化并**等进程真退出**才返回（exit_code 是进程真实退出码，不是超时推断）。此类命令无需再传 background / wait_exit / timeout"
+                        )],
+                        None => Vec::<String>::new(),
+                    },
                     "error": null
                 });
                 return Ok(result_json.to_string());
@@ -1154,6 +1329,8 @@ impl BuiltinTool for RunTool {
                         .args(["/PID", &pid.to_string(), "/T", "/F"])
                         .stdout(Stdio::null())
                         .stderr(Stdio::null())
+                        // 同上：无控制台壳拉起时不弹窗
+                        .creation_flags(0x0800_0000)
                         .status()
                         .await;
                     out.map(|s| s.success()).unwrap_or(false)

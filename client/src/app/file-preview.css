@@ -3,10 +3,12 @@
 
 .fp-body {
   flex: 1; min-height: 0; overflow: auto;
-  --fp-measure: 73ch;
   --fp-fs: var(--fs-base);
 
-  --fp-pad-x: clamp(14px, 4vw, 24px);
+  /* 左右留白跟着**面板**宽走。原来用 4vw 是错的：vw 取的是视口宽，
+     分栏被拉动时留白一动不动，看起来就像"内容宽度写死了"。
+     百分比 padding 解析的是包含块宽度，面板越宽留白越舒展。 */
+  --fp-pad-x: clamp(16px, 3.5%, 40px);
 }
 .fp-msg { margin: 0; padding: var(--sp-4); font-size: var(--fs-sm); color: var(--faint); }
 .fp-frame { width: 100%; height: 100%; border: none; background: var(--panel); }
@@ -29,8 +31,11 @@
 
 .prose.fp-md {
   padding: 20px var(--fp-pad-x) 32px;
-  max-width: calc(var(--fp-measure) + var(--fp-pad-x) * 2);
-  margin-inline: auto;
+  /* 正文不再锁 73ch：右侧栏拉宽，正文跟着铺满（旧写法会留两条大空白，
+     用户以为"宽度是固定的"）。长行可读性由行高 1.85 与段间距兜住；
+     真要限宽时把这一行换成 `max-width: 110ch; margin-inline: auto;` 即可。 */
+  max-width: 100%;
+  margin-inline: 0;
 
   font-size: var(--fp-fs);
 

@@ -234,6 +234,7 @@ pub async fn delete_session(pool: &SqlitePool, id: &str) -> AppResult<bool> {
         "memories",
         "turn_logs",
         "interjections",
+        "round_frames",
     ] {
         sqlx::query(&format!("DELETE FROM {table} WHERE session_id = ?1"))
             .bind(id)
@@ -372,6 +373,45 @@ pub async fn insert_message(
         item_json: item_json.map(String::from),
         created_at: ts,
     })
+}
+
+/// 存档当轮帧：按锚点消息 id 幂等覆盖（同一轮重跑不会堆两条）。
+///
+/// 帧必须在**下一轮重建时原样重现**——缓存是逐字节前缀匹配，少一个字节、
+/// 换一个位置，其后整段作废。详见 `migrations/0019_round_frames.sql` 的说明。
+pub async fn put_round_frame(
+    pool: &SqlitePool,
+    session_id: &str,
+    anchor_message_id: &str,
+    item_json: &str,
+) -> AppResult<()> {
+    sqlx::query(
+        "INSERT INTO round_frames (session_id, anchor_message_id, item_json, created_at)
+         VALUES (?1, ?2, ?3, ?4)
+         ON CONFLICT(session_id, anchor_message_id)
+         DO UPDATE SET item_json = excluded.item_json",
+    )
+    .bind(session_id)
+    .bind(anchor_message_id)
+    .bind(item_json)
+    .bind(now())
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+/// 读某会话的全部帧存档：锚点消息 id → item_json（重建时按锚点插回原位）。
+pub async fn load_round_frames(
+    pool: &SqlitePool,
+    session_id: &str,
+) -> AppResult<std::collections::HashMap<String, String>> {
+    let rows: Vec<(String, String)> = sqlx::query_as(
+        "SELECT anchor_message_id, item_json FROM round_frames WHERE session_id = ?1",
+    )
+    .bind(session_id)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows.into_iter().collect())
 }
 
 /// 按时间顺序取会话全部消息

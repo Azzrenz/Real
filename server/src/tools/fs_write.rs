@@ -7,6 +7,7 @@ use crate::tools::fs_read::{looks_like_tool_envelope, resolve_guarded};
 use async_trait::async_trait;
 use serde_json::{json, Value};
 use std::collections::HashSet;
+use std::os::windows::process::CommandExt;
 use std::sync::{LazyLock, Mutex};
 use tokio::fs;
 use uuid::Uuid;
@@ -132,6 +133,8 @@ fn node_check_script(script: &str, tag: &str) -> Option<String> {
     let out = std::process::Command::new("node")
         .arg("--check")
         .arg(&tmp)
+        // CREATE_NO_WINDOW：无控制台壳拉起时不弹黑窗
+        .creation_flags(0x0800_0000)
         .output();
     let _ = std::fs::remove_file(&tmp);
     match out {
@@ -165,6 +168,8 @@ fn python_check_script(code: &str) -> Option<String> {
             "import ast,sys; ast.parse(open(sys.argv[1],encoding='utf-8').read())",
         ])
         .arg(&tmp)
+        // CREATE_NO_WINDOW：无控制台壳拉起时不弹黑窗
+        .creation_flags(0x0800_0000)
         .output();
     let _ = std::fs::remove_file(&tmp);
     match out {
@@ -1131,6 +1136,8 @@ async fn check_python_syntax(path: &std::path::Path) -> Result<(), String> {
     let res = tokio::task::spawn_blocking(move || {
         std::process::Command::new(resolve_python_exe())
             .args(["-m", "py_compile", &p.display().to_string()])
+            // CREATE_NO_WINDOW：无控制台壳拉起时不弹黑窗
+            .creation_flags(0x0800_0000)
             .output()
     })
     .await;
@@ -1290,6 +1297,8 @@ if problems:
         std::process::Command::new(&py)
             .arg(&ck)
             .arg(&p.display().to_string())
+            // CREATE_NO_WINDOW：无控制台壳拉起时不弹黑窗
+            .creation_flags(0x0800_0000)
             .output()
     }).await;
     match res {

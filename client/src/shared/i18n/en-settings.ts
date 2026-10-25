@@ -53,6 +53,11 @@ export const enSettings: Record<string, string> = {
   '数据目录': 'Data directory',
   '日志 / spill / 数据库存放根': 'Root for logs / spill / database',
   '留空 = 默认（{dir}）': 'Empty = default ({dir})',
+  '{d} 盘': 'Drive {d}',
+  '回到默认位置': 'Back to default location',
+  '当前生效：{dir}': 'In effect: {dir}',
+  '运行数据（数据库 / 日志 / spill / 技能 / 厂商档案）默认落在 {dir}，安装目录只放程序本体。改后需重启——启动时自动把旧目录数据迁入新目录，源目录保留可回滚。环境变量 REAL_DATA_DIR 优先级更高。':
+    'Runtime data (database / logs / spill / skills / provider profiles) defaults to {dir}; the install directory holds only the program. Changing it needs a restart — old data is migrated into the new directory at startup and the source is kept for rollback. The REAL_DATA_DIR environment variable takes precedence.',
 
   // ── Settings: tuning ─────────────────────────────────────────────────
   '调优档位': 'Presets',

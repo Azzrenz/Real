@@ -400,6 +400,8 @@ struct Ledger {
     bad_rounds: u32,
     /// 空转熔断计数：连续结构性空响应（1-token 死循环特征）≥6 即熔断；与 bad_rounds 语义不同。
     empty_spins: u32,
+    /// 旁白记账：连续几轮「有工具调用、一句正文都没有」——用户眼前只剩卡片，见 `agent::narration`。
+    silent_rounds: u32,
     last_mirror: u32,
     pending_tail: Option<String>,
     last_edit_preflight: u32,
@@ -476,6 +478,20 @@ struct Loop<'a> {
 /// 运行产物：(答案, 轮次, 工具调用数, 改动文件)
 type Spin = AppResult<(String, u32, u32, Vec<String>)>;
 
+/// 构造当轮帧条目（`user` 角色，但内容以【本轮用户输入】开头 ⇒ `is_round_frame` 认得它，
+/// 归档/裁剪/瘦身都不会把它当回合起点）。
+///
+/// 单独成函数是为了能被测试钉住 —— 这条不变式（历史前缀不改写、帧只追加）决定跨轮缓存命中率。
+fn round_frame_item(frame_text: String, image_blocks: &[Value]) -> InputItem {
+    let mut blocks = vec![json!({"type": "input_text", "text": frame_text})];
+    blocks.extend(image_blocks.iter().cloned());
+    InputItem::Message {
+        role: "user".into(),
+        content: json!(blocks),
+        tool_calls: None,
+    }
+}
+
 /// 上下文构成快照：请求各段按字节拆分（相对拆分够用，绝对值以 llm.usage 为准）。
 fn context_snapshot(
     instructions_bytes: usize,
@@ -538,6 +554,7 @@ impl Loop<'_> {
             plan_steps: Vec::new(),
             bad_rounds: 0,
             empty_spins: 0,
+            silent_rounds: 0,
             last_mirror: 0,
             pending_tail: None,
             last_edit_preflight: 0,
@@ -580,54 +597,70 @@ impl Loop<'_> {
                 &[("memory", &self.memory_ctx)],
             )
         };
-        let goal = crate::agent::context::render(
+        // ── 当轮帧落位：**永远追加**，绝不改写历史末条 ──
+        //
+        // 旧实现把帧**写进**历史末条那条 user（`*content = frame`），理由是「语义等价、省字节」。
+        // 但它每轮都在前缀中段动一个字节，而缓存是逐字节前缀匹配 —— 断点之后整段作废。
+        // 日志实证（cache-probe 对齐）：`first=0 prev_len=354 replaced=354 old_tail=964170`，
+        // 上一轮载荷 items[0] 是 82B 帧、本轮重建 items[0] 是 350KB 原话 ⇒ 15 万 token 全额 miss。
+        //
+        // 改为追加后，帧落在**末尾**：历史（含当轮原话）逐字节可复用，只有帧及其之后重算。
+        // 原话已在场时帧内不再重复它（`{goal}` 换成占位），所以**字节量不变** ——
+        // 这是纯收益：省下的 miss 是十几万 token，付出的只是多一条消息的分隔。
+        let goal_in_history = matches!(
+            st.items.last(),
+            Some(InputItem::Message { role, .. }) if role == "user"
+        );
+        let goal_var: &str = if goal_in_history {
+            "（同上一条用户消息——那就是本轮原话，这里只补本轮的上下文与规范）"
+        } else {
+            st.goal.as_str()
+        };
+        let frame_text = crate::agent::context::render(
             &crate::agent::context::section(
                 include_str!("../../../prompts/workflow/round_frame.md"),
                 "frame",
             ),
             &[
-                ("goal", &st.goal),
+                ("goal", goal_var),
                 ("memory", &memory),
                 // 输出语言：全局设置，每 run 读一次（值只进 dynamic 区，见 output_lang.rs）
                 ("lang", lang.frame_line()),
-                // 域装配：基础契约 + 命中域的工作流话术（内核零域知识）
+                // 域装配：基础契约 + 命中域的工作流话术（内核零域知识）——
+                // 用 `st.goal` 选域，不受上面 `goal_var` 的占位影响。
                 ("contract", &contract_for(&st.goal)),
             ],
         );
-        let mut user_blocks = vec![json!({"type": "input_text", "text": goal})];
-        user_blocks.extend(self.image_blocks.iter().cloned());
-        // ── 当轮帧就位：**替换**末条 user，而不是再 push 一条 ──
-        let user_content = json!(user_blocks);
-        let reused_row = match st.items.last_mut() {
-            Some(InputItem::Message { role, content, tool_calls }) if role == "user" => {
-                *content = user_content.clone();
-                *tool_calls = None;
-                true
+        let frame_item = round_frame_item(frame_text, &self.image_blocks);
+        // **先存档再发送**：下一轮重建要按锚点把这一帧原样插回原位，晚一步就白存。
+        // 存档失败不拦任务——代价只是那一轮的前缀作废一次（比中断任务便宜得多）。
+        if let Some(anchor) = self.history_last_user_id.as_deref() {
+            match serde_json::to_string(&frame_item) {
+                Ok(js) => {
+                    if let Err(e) = crate::db::repos::put_round_frame(
+                        &self.ctx.pool,
+                        &self.session_id,
+                        anchor,
+                        &js,
+                    )
+                    .await
+                    {
+                        tracing::warn!(
+                            session = %self.session_id,
+                            error = %e,
+                            "帧存档失败：下一轮前缀会从帧的位置起整段失效"
+                        );
+                    }
+                }
+                Err(e) => tracing::warn!(error = %e, "帧序列化失败（不影响本轮发送）"),
             }
-            _ => false,
-        };
-        if !reused_row {
-            st.items.push(InputItem::Message {
-                role: "user".into(),
-                content: user_content.clone(),
-                tool_calls: None,
-            });
         }
-        // ⚠️ 09-25：**不再把当轮帧写回库**（原实现见 git 历史）。
-        //
-        // 当轮帧里含 `{memory}`（项目上下文）与 `{contract}`（工作规范），而这两段是**每轮重新渲染**的。
-        // 一旦写回库，下一轮装配时 `trim_stale_frames` 就**必须**把这条帧从「全貌」砍回「光杆」
-        //（`STALE_FRAME_KEEP_TASKS = 0` ⇒ 只保当前帧全貌）。一来一回两次改写都落在**历史中段**，
-        // 而前缀缓存是逐字节前缀匹配：中段一改，其后所有字节全部作废，每轮按 miss 重算
-        //（实测「0928国庆大环游」每轮重算 ~147K tokens，日志原文："首个改动点之后的前缀全部失效"）。
-        //
-        // 库里保持 `chat.rs` 落库的**原始用户输入**（append-only），于是：
-        //   · 历史帧永不含 memory ⇒ `trim_stale_frames` 找不到分界标记，自然退化为 no-op；
-        //   · 历史只追加、不改写 ⇒ 前缀缓存首次可连续命中；
-        //   · 前端读到的就是用户原话，`.localUserOf` 剥不剥都不影响显示（反而更干净）。
-        // 当轮帧仍在内存里含 memory —— 模型看到的上下文与改动前**逐字节等价**
-        //（改动前历史帧同样会被砍成光杆），故这是纯收益、零语义变化的改动。
-        let _ = reused_row;
+        st.items.push(frame_item);
+        // ⚠️ 09-25：**帧不写回库**（原实现见 git 历史）。库里保持 `chat.rs` 落库的原始用户输入，
+        // 于是历史是纯 append-only，`trim_stale_frames` 找不到分界标记 → 自然退化为 no-op。
+        // 当轮帧只在内存里追加在末尾：下一轮重建时它不存在，但它在**最末尾**，
+        // 被顶掉的只是它自己那几 KB（日志归类为「一次性便条，非浪费」）。
+        // 前端读到的仍是用户原话，`.localUserOf` 剥不剥都不影响显示。
 
         // ── 进度上报（起手）：让右侧栏「进度」页看见 agent 自己在跑什么 ──
         // 与外部长活（渲染 / 转写）共用同一份快照 —— 契约见 `agent::progress` 模块头，
@@ -1142,6 +1175,24 @@ impl Loop<'_> {
         let fcs = normalize_calls(st, std::mem::take(&mut resp.function_calls));
         // ★ 本轮是否撞了输出上限 —— 判据统一走 `is_truncated`（执行相与收敛相共用一处定义）。
         let truncated = Self::is_truncated(&resp);
+        // ── 旁白记账：本轮有工具调用却一句不写 → 用户眼前只剩一串卡片 ──
+        // 截断轮不计：那句旁白可能正好被输出上限切掉，算进来是冤枉它。
+        if !truncated {
+            if resp.output_text.trim().is_empty() {
+                st.silent_rounds += 1;
+            } else {
+                st.silent_rounds = 0;
+            }
+            if let Some(hint) = crate::agent::narration::nudge(st.silent_rounds) {
+                crate::agent::narration::push_tail(&mut st.pending_tail, hint);
+                tracing::warn!(
+                    session = %self.session_id, round = st.rounds,
+                    silent_rounds = st.silent_rounds,
+                    "旁白缺失：连续多轮只发工具调用，已回灌一次提醒"
+                );
+                st.silent_rounds = 0;
+            }
+        }
         // 轮边界排空正文发射器：本轮模型说的话（旁白）必须先于本轮工具卡片到达前端。
         self.message_emitter.flush();
         // thinking mode 契约：reasoning 必须回传（**非空**即可，长度不受约束 → 可安全瘦身）
@@ -1155,7 +1206,15 @@ impl Loop<'_> {
                 let _ = crate::db::repos::insert_message(pool, &self.session_id, "reasoning", &resp.reasoning, Some(&ij)).await;
             }
         }
-        st.items.push(InputItem::assistant_with_tools(&resp.reasoning, "", &fcs));
+        // ★ 旁白必须进历史：原来这里写死 `""`（只把 tool_calls 推进 items），后果是**模型在上下文里
+        // 从没见过自己叙述过**——它在模仿一个"从不说话"的自己，于是第 2 轮起就不再写旁白（实测 133 个
+        // 工具轮只有 4 轮有文本）。同时 `intask::fold_old_narrations` 也成了空转：它专门负责压缩历史旁白，
+        // 而历史里根本没有旁白可压。传真实文本即可，长度由折叠机制兜（`NARRATION_FOLD_*`）。
+        st.items.push(InputItem::assistant_with_tools(
+            &resp.reasoning,
+            &resp.output_text,
+            &fcs,
+        ));
         { let pool = &self.ctx.pool;
             let ij = serde_json::to_string(&st.items.last().unwrap()).unwrap_or_default();
             let _ = crate::db::repos::insert_message(pool, &self.session_id, "assistant", &resp.output_text, Some(&ij)).await;

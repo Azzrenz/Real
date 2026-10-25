@@ -1,6 +1,14 @@
 use std::net::TcpStream;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
+
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
+
+/// Windows：子进程创建时不分配控制台。壳是 GUI 程序（windows_subsystem = "windows"），
+/// 而 real-server.exe / git 都是控制台程序——直接 spawn 时系统会为它单开一个黑色 cmd 窗口。
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
 use std::sync::Mutex;
 use std::time::Duration;
@@ -54,12 +62,14 @@ fn ensure_backend() {
                 .parent()
                 .map(|p| p.to_path_buf())
                 .unwrap_or_else(|| PathBuf::from("."));
-            match Command::new(&cand)
-                .current_dir(&ws)
+            let mut cmd = Command::new(&cand);
+            cmd.current_dir(&ws)
                 .stdin(Stdio::null())
                 .stdout(Stdio::null())
-                .stderr(Stdio::null())
-                .spawn()
+                .stderr(Stdio::null());
+            #[cfg(windows)]
+            cmd.creation_flags(CREATE_NO_WINDOW);
+            match cmd.spawn()
             {
                 Ok(_) => {
                     eprintln!("[real] 后端未运行，已自动拉起: {}", cand.display());
@@ -806,24 +816,53 @@ async fn read_preview_text(path: String) -> Result<Option<String>, String> {
     Ok(String::from_utf8(bytes).ok())
 }
 
-/// 长活动进度的**全局索引**：`%APPDATA%/real-agent/progress_index.json`。
+/// 长活动进度的**全局索引**：数据根下的 `progress_index.json`（默认 `D:\RealData`）。
 ///
-/// 长活上报进度（`progress.py`）时自己把快照目录登记进来，所以面板**不必让用户手填路径**：
+/// 长活上报进度时自己把快照目录登记进来，所以面板**不必让用户手填路径**：
 /// 读一次索引就知道机器上现在有哪些活在跑、分别在哪个工作区。返回原文，没有就 `None`。
+///
+/// 解析顺序必须与后端 `path::data_root` 一致（REAL_DATA_DIR > 设置面板标记 > D:\RealData
+/// > %APPDATA%\real-agent），否则面板会读一个壳子自己编的位置——用户在设置里换了盘，
+/// 面板就再也看不到进度了。
+fn data_root_dir() -> Option<std::path::PathBuf> {
+    if let Ok(d) = std::env::var("REAL_DATA_DIR") {
+        if !d.trim().is_empty() {
+            return Some(std::path::PathBuf::from(d.trim()));
+        }
+    }
+    let roaming = std::env::var("APPDATA").ok().map(std::path::PathBuf::from);
+    if let Some(base) = &roaming {
+        let marker = base.join("real-agent").join("data_dir.txt");
+        if let Ok(s) = std::fs::read_to_string(&marker) {
+            let t = s.trim();
+            if !t.is_empty() {
+                return Some(std::path::PathBuf::from(t));
+            }
+        }
+    }
+    // 出厂默认：有 D 盘就落 D:\RealData（与后端同一条判据）
+    if std::path::Path::new("D:\\").is_dir() {
+        return Some(std::path::PathBuf::from("D:\\RealData"));
+    }
+    roaming.map(|b| b.join("real-agent"))
+}
+
 #[tauri::command]
 async fn progress_index() -> Result<Option<String>, String> {
-    let base = std::env::var("APPDATA")
+    let root = data_root_dir().ok_or_else(|| "取不到数据根目录".to_string())?;
+    let p = root.join("progress_index.json");
+    // 换根后旧索引还在 C 盘：只读回落，别让用户看到"活没了"
+    let legacy = std::env::var("APPDATA")
         .ok()
-        .map(std::path::PathBuf::from)
-        .or_else(|| std::env::var("HOME").ok().map(|h| std::path::PathBuf::from(h).join(".config")))
-        .ok_or_else(|| "取不到 APPDATA".to_string())?;
-    let p = base.join("real-agent").join("progress_index.json");
-    if !p.exists() {
-        return Ok(None);
+        .map(|b| std::path::PathBuf::from(b).join("real-agent").join("progress_index.json"));
+    for cand in [Some(p), legacy].into_iter().flatten() {
+        if cand.exists() {
+            return std::fs::read(&cand)
+                .map(|b| String::from_utf8(b).ok())
+                .map_err(|e| format!("读取失败：{e}"));
+        }
     }
-    std::fs::read(&p)
-        .map(|b| String::from_utf8(b).ok())
-        .map_err(|e| format!("读取失败：{e}"))
+    Ok(None)
 }
 
 /// 文件树里的一行。字段名对着前端 `FileEntry` 逐字对应。
@@ -933,10 +972,11 @@ async fn write_preview_text(path: String, content: String) -> Result<(), String>
 /// **一律用 `-C <目录>` 指定仓库，不用 `set_current_dir`**：进程 cwd 是全局状态，
 /// 而侧栏和主窗口会并发发命令——一个去切 cwd，另一个的命令就会在错的目录里跑。
 fn git_in(dir: &str, args: &[&str]) -> Result<String, String> {
-    let out = std::process::Command::new("git")
-        .arg("-C")
-        .arg(dir)
-        .args(args)
+    let mut cmd = std::process::Command::new("git");
+    cmd.arg("-C").arg(dir).args(args);
+    #[cfg(windows)]
+    cmd.creation_flags(CREATE_NO_WINDOW);
+    let out = cmd
         .output()
         .map_err(|e| format!("执行 git 失败：{e}"))?;
     if !out.status.success() {

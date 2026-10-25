@@ -11,6 +11,12 @@ pub(crate) fn items_bytes(items: &[InputItem]) -> usize {
 
 /// 条目类型短名 —— **探针与改写记账共用同一把尺子**。
 pub(crate) fn item_kind(it: &InputItem) -> String {
+    // 帧必须与**真用户消息**在日志里区分开：否则
+    // `中段被改写 at=…|msg:user|82` 这行看不出断的到底是用户原话还是当轮帧，
+    // 而两者的处置方式完全不同（原话不许动，帧要原样重放）。
+    if is_round_frame(it) {
+        return "frame".to_string();
+    }
     match it {
         InputItem::Message { role, .. } => format!("msg:{role}"),
         InputItem::FunctionCallOutput { .. } => "tool_out".to_string(),
@@ -675,11 +681,37 @@ pub(crate) fn stub_span(items: &mut Vec<InputItem>, start: usize, end: usize) ->
 }
 
 /// 回合起点：`role == "user"` 的位置。
+/// 是不是「当轮帧」—— 它挂在 `user` 角色下，但**不是回合起点**。
+///
+/// 判据只看首块的文本前缀（`FRAME_HEAD`）：帧是内核渲染的，用户不会自己发出这个前缀。
+/// 为什么必须把它从「回合起点」里排除：跨回合归档、去重、发送前裁剪、历史帧瘦身
+/// 全部以 user 消息划分回合 —— 一旦把帧也算进去，一个回合被切成两半，
+/// `turn_logs.seq` 与归档边界同时错位。
+pub(crate) fn is_round_frame(it: &InputItem) -> bool {
+    let InputItem::Message { role, content, .. } = it else {
+        return false;
+    };
+    if role != "user" {
+        return false;
+    }
+    let Value::Array(blocks) = content else {
+        return false;
+    };
+    blocks.iter().any(|b| {
+        b.get("text")
+            .and_then(|t| t.as_str())
+            .map(|t| t.starts_with(super::intask::FRAME_HEAD))
+            .unwrap_or(false)
+    })
+}
+
 pub(crate) fn user_positions(items: &[InputItem]) -> Vec<usize> {
     items
         .iter()
         .enumerate()
-        .filter(|(_, it)| matches!(it, InputItem::Message { role, .. } if role == "user"))
+        .filter(|(_, it)| {
+            matches!(it, InputItem::Message { role, .. } if role == "user") && !is_round_frame(it)
+        })
         .map(|(i, _)| i)
         .collect()
 }

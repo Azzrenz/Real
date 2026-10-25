@@ -27,5 +27,20 @@ pub fn tool_envelope_secs(env_default: u64, tool: &str, args: &serde_json::Value
             t = t.max(n as u64 + 15);
         }
     }
+    // `run` 的「按进程等待」特权：构建/安装类长命令由**内核**强制后台 + 等进程退出，
+    // 期间可能合法地盯上几十分钟。信封若还是 60s 就会在进程还活着时把它掐断——
+    // 那就又变成"按时间判定"了。故给这类调用放宽到「进程等待预算 + 余量」。
+    if tool == "run" {
+        let waits_process = args.get("wait_exit").and_then(|v| v.as_bool()).unwrap_or(false)
+            || args.get("background").and_then(|v| v.as_bool()).unwrap_or(false)
+            || args
+                .get("command")
+                .and_then(|v| v.as_str())
+                .map(|c| crate::tools::cmd_tools::process_judged_reason(c).is_some())
+                .unwrap_or(false);
+        if waits_process {
+            t = t.max(crate::tools::cmd_tools::run_wait_budget_secs() + 120);
+        }
+    }
     t
 }

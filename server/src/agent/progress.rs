@@ -184,7 +184,7 @@ fn take_items(root: &mut Map<String, Value>) -> Vec<Value> {
     }
 }
 
-/// 登记到全局索引（`%APPDATA%/real-agent/progress_index.json`）。
+/// 登记到全局索引（数据根下的 `progress_index.json`，默认 `D:\RealData`）。
 ///
 /// 索引形状与 `progress_index` 命令的读取端逐字对应：`{ "<快照绝对路径>": {dir,snapshot,mtime} }`。
 /// 失败只记 debug —— 索引丢了，用户还能手填路径；不该因此打断任务。
@@ -194,6 +194,22 @@ fn register_index(snapshot: &Path) {
         let _ = std::fs::create_dir_all(parent);
     }
     let mut obj = read_object(&p);
+    if obj.is_empty() {
+        // 换根（C 盘 → D 盘）后第一次写：把旧位置的登记并进来，
+        // 否则面板会"凭空少几个活"——用户看到的是活丢了，不是索引换了家。
+        // 显式指定过 `REAL_PROGRESS_INDEX`（调试/测试）时不并——那是在沙盒里验行为，
+        // 混进真实用户目录的登记会让断言看到不属于沙盒的数据。
+        let overridden = std::env::var("REAL_PROGRESS_INDEX")
+            .map(|v| !v.trim().is_empty())
+            .unwrap_or(false);
+        if !overridden {
+            if let Some(old) = legacy_index_path() {
+                if old != p {
+                    obj = read_object(&old);
+                }
+            }
+        }
+    }
     let key = snapshot.to_string_lossy().to_string();
     obj.insert(
         key.clone(),
@@ -228,6 +244,9 @@ fn register_index(snapshot: &Path) {
 }
 
 /// 索引文件位置 —— 与 `lib.rs` 的 `progress_index` 命令**同一处**，不许各拼一份。
+///
+/// 归属**数据根**（默认 `D:\RealData\progress_index.json`）：索引登记的是本机在跑的活，
+/// 属于运行期数据，不该留在 C 盘用户目录里跟着重装一起消失。
 fn index_path() -> Option<PathBuf> {
     // 调试与测试可用 `REAL_PROGRESS_INDEX` 指到别处 —— 免得验证时写进真实用户目录。
     if let Ok(p) = std::env::var("REAL_PROGRESS_INDEX") {
@@ -235,6 +254,11 @@ fn index_path() -> Option<PathBuf> {
             return Some(PathBuf::from(p));
         }
     }
+    Some(crate::path::data_root::data_root().join("progress_index.json"))
+}
+
+/// 旧位置（C 盘用户目录）：只读回落用——换根之前登记的索引还在那儿，别当成"没有活"。
+fn legacy_index_path() -> Option<PathBuf> {
     std::env::var("APPDATA")
         .ok()
         .map(PathBuf::from)

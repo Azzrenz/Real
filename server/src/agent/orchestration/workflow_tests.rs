@@ -260,3 +260,75 @@ mod readmemo_tests {
         assert_eq!(clip_utf8("short", 10), "short");
     }
 }
+
+/// 缓存命中的唯一不可变式：**历史部分逐字节不动，易变内容只追加在末尾**。
+///
+/// 为什么值得一条测试：这条不变式被违反过，代价是每次跨轮十几万 token 全额 miss
+///（日志实证 `cache-probe 对齐：first=0 prev_len=354 replaced=354 old_tail=964170`）。
+/// 违反它的写法看起来还很"省"（覆写末条 user，省掉重复的原话），所以只能靠测试拦。
+#[cfg(test)]
+mod round_frame_position_tests {
+    use super::*;
+
+    fn bytes_of(items: &[InputItem]) -> Vec<String> {
+        items
+            .iter()
+            .map(|i| serde_json::to_string(i).unwrap_or_default())
+            .collect()
+    }
+
+    /// 帧必须**新增**在末尾；历史前缀逐条逐字节保持原样。
+    #[test]
+    fn frame_is_appended_never_rewrites_history() {
+        let history = vec![
+            InputItem::user_message("第一轮原话"),
+            InputItem::assistant_message("第一轮结论"),
+            // 当事轮原话可能极大（粘贴构建日志），它最容易被"省字节"的写法吃掉
+            InputItem::user_message(&"粘贴的构建日志行\n".repeat(400)),
+        ];
+        let before = bytes_of(&history);
+
+        let mut items = history.clone();
+        items.push(round_frame_item("【本轮用户输入】（同上一条用户消息）".into(), &[]));
+
+        assert_eq!(items.len(), history.len() + 1, "帧必须是新增条目，不是覆写末条");
+        assert_eq!(before, bytes_of(&items[..history.len()]), "历史前缀被改写了——缓存将从该处整段作废");
+        assert!(
+            matches!(items.last(), Some(InputItem::Message { role, .. }) if role == "user"),
+            "帧落位必须是 user"
+        );
+    }
+
+    /// 图片块跟着帧走，不能把历史里的附件顶掉。
+    #[test]
+    fn frame_keeps_image_blocks_after_text() {
+        let mut items = vec![InputItem::user_message("原话")];
+        let before = bytes_of(&items);
+        let img = serde_json::json!({"type": "input_image", "image_url": "data:image/png;base64,AA"});
+        items.push(round_frame_item("帧正文".into(), std::slice::from_ref(&img)));
+        assert_eq!(before, bytes_of(&items[..1]), "历史不得被图片块改写");
+        let last = serde_json::to_string(items.last().unwrap()).unwrap();
+        assert!(last.contains("帧正文") && last.contains("input_image"), "帧文本与图片要同体：{last}");
+    }
+
+    /// 帧挂在 user 角色下，但**不能**被当成回合起点 —— 归档/裁剪/瘦身全靠这条判据。
+    #[test]
+    fn round_frame_is_not_a_turn_boundary() {
+        let frame = round_frame_item("【本轮用户输入】看这里".into(), &[]);
+        assert!(crate::agent::history::is_round_frame(&frame), "帧必须可识别");
+        let real = InputItem::user_message("用户自己说的话");
+        assert!(!crate::agent::history::is_round_frame(&real), "普通用户消息不是帧");
+
+        let items = vec![
+            real.clone(),
+            frame.clone(),
+            InputItem::assistant_message("回复"),
+            InputItem::user_message("下一轮"),
+        ];
+        assert_eq!(
+            crate::agent::history::user_positions(&items),
+            vec![0, 3],
+            "帧不得进入回合起点列表——否则一个回合被切成两半，turn_logs.seq 与归档边界同时错位"
+        );
+    }
+}

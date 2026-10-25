@@ -197,6 +197,41 @@ pub async fn build_history(pool: &sqlx::SqlitePool, session_id: &str) -> AppResu
         }
         _ => None,
     };
+    // ── 帧重放：把各轮的当轮帧按**锚点消息 id**插回它原来的位置（紧跟那条用户原话之后）──
+    //
+    // 这是跨轮缓存命中的关键一步：上一轮发出去的字节序列 =「原话 + 帧 + 其后的回复与工具往返」，
+    // 本轮重建必须把「帧」这个位置也再现出来，否则断点就落在帧上，其后整段 miss
+    //（实测单次 5–50 万字节）。帧单独存表、不进 messages —— 理由见迁移文件头。
+    if let Ok(frames) = crate::db::repos::load_round_frames(pool, session_id).await {
+        if !frames.is_empty() {
+            let mut replayed = 0usize;
+            let mut i = 0usize;
+            while i < items.len() {
+                let hit = item_ids
+                    .get(i)
+                    .and_then(|x| x.as_ref())
+                    .and_then(|id| frames.get(id))
+                    .and_then(|js| serde_json::from_str::<InputItem>(js).ok());
+                i += 1;
+                if let Some(f) = hit {
+                    items.insert(i, f);
+                    // 帧不是 messages 里的行：给它 None/空基准，`persist_rewrites` 自动跳过
+                    item_ids.insert(i, None);
+                    item_orig.insert(i, String::new());
+                    i += 1;
+                    replayed += 1;
+                }
+            }
+            if replayed > 0 {
+                tracing::info!(
+                    session = %session_id,
+                    replayed,
+                    archived = frames.len() - replayed,
+                    "帧重放：按锚点插回原位（archived 数 = 锚点已被窗口裁掉的，自然不再重放）"
+                );
+            }
+        }
+    }
     // ① 不改变条数的改写：回合边界归档（路标 stub / 硬顶 / 参数压缩）+ 附件退场 + 读去重
     let idle_seconds = session_idle_seconds(pool, session_id).await;
     let cold = govern::cache_is_cold(idle_seconds);
@@ -285,13 +320,10 @@ pub(crate) fn enforce_token_ceiling(items: &mut Vec<InputItem>) -> usize {
     if est(items_bytes(&items[..])) <= cap {
         return 0;
     }
-    // 合法切点：user 消息下标。从「最后一条 user」往回找，取**最早的**那个
-    let user_idx: Vec<usize> = items
-        .iter()
-        .enumerate()
-        .filter(|(_, it)| matches!(it, InputItem::Message { role, .. } if role == "user"))
-        .map(|(i, _)| i)
-        .collect();
+    // 合法切点：user 消息下标（**排除当轮帧**——切在帧上会让保留段从
+    // 「（同上一条用户消息）」开头，模型看不到原话，语义就断了）。
+    // 从「最后一条 user」往回找，取**最早的**那个
+    let user_idx: Vec<usize> = user_positions(&items);
     // 升序 `find`：命中「最小的合法切点」⇒ drain 掉的前缀最短 ⇒ 保留最多历史。
     let cut = user_idx
         .iter()

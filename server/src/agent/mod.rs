@@ -7,6 +7,7 @@ pub mod output_lang;
 pub mod execution;
 pub mod history;
 pub mod memory;
+pub mod narration;
 pub mod orchestration;
 pub mod session_title;
 pub mod planning;

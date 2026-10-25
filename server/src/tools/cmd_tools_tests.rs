@@ -1077,3 +1077,119 @@ mod bat_asset_tests {
         );
     }
 }
+
+// ── 内核判据：构建/安装类按**进程**判定（用户拍板：不按时间判断） ──────────────
+#[cfg(test)]
+mod process_judged_tests {
+    use super::*;
+
+    /// 命中 = 内核强制「后台 + 等进程真退出」。漏判一个，那条命令就退回「按时间杀」。
+    #[test]
+    fn hits_build_and_install_commands() {
+        for c in [
+            "cargo build --release",
+            "cargo test --all",
+            "cargo install tauri-cli",
+            "cargo clippy --all-targets",
+            "npm install",
+            "npm run build",
+            "pnpm install",
+            "yarn build",
+            "pip install -r requirements.txt",
+            "python -m pip install numpy",
+            "tauri build",
+            "dotnet build",
+            "msbuild app.sln",
+            "cmake --build build",
+            "gradle build",
+            "mvn package",
+            "docker build -t real .",
+            "go build ./...",
+            "git clone https://github.com/x/y",
+            "winget install Node",
+            "ollama pull qwen3",
+            "robocopy D:\\a D:\\b /E",
+            "make -j8",
+            "npm install && make",
+        ] {
+            assert!(process_judged_reason(c).is_some(), "应判定为长任务: {c}");
+        }
+    }
+
+    /// 常驻服务 / 普通命令绝不能命中：硬等它们退出 = 把会话挂死半小时。
+    #[test]
+    fn ignores_resident_and_ordinary_commands() {
+        for c in [
+            "npm run dev",
+            "tauri dev",
+            "cargo run --bin real-server",
+            "vite",
+            "node scripts/ui-guard.mjs",
+            "git status",
+            "dir /b",
+            "make sure the file exists",
+            "echo hello",
+        ] {
+            assert!(process_judged_reason(c).is_none(), "不应判定为长任务: {c}");
+        }
+    }
+
+    /// `real-server` 里含 `serve` 子串——真构建不许被「常驻」规则误排除。
+    #[test]
+    fn server_word_is_not_treated_as_resident() {
+        assert!(process_judged_reason("cargo build -p real-server").is_some());
+        assert!(process_judged_reason("npm run build -- --mode production").is_some());
+    }
+}
+
+// ── 端到端：模型不传任何参数，内核也必须按**进程**判定 ──────────────────────
+#[cfg(test)]
+mod forced_process_wait_tests {
+    use super::*;
+
+    fn has_on_path(bin: &str) -> bool {
+        std::env::var_os("PATH")
+            .map(|p| std::env::split_paths(&p).any(|d| d.join(bin).is_file()))
+            .unwrap_or(false)
+    }
+
+    /// 故意传一个**很小**的 `timeout`：命中内核判据后它必须被忽略，否则就是"按时间杀"。
+    /// 断言三点 —— 自动后台化、落日志、`termination.kind=exited`（进程真实退出，不是超时推断）。
+    #[tokio::test]
+    async fn kernel_forces_process_wait_without_model_flags() {
+        if !has_on_path("npm.cmd") {
+            return; // 无 npm 的机器不判失败（本测试验"强制语义"，不验 npm 是否安装）
+        }
+        let dir = std::env::temp_dir().join(format!("real_run_forced_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("package.json"),
+            r#"{"name":"real-forced-test","version":"1.0.0","private":true}"#,
+        )
+        .unwrap();
+        let tool = RunTool;
+        let out = tool
+            .run(json!({
+                "command": "npm install --no-audit --no-fund",
+                "cwd": dir.to_string_lossy(),
+                "timeout": 5
+            }))
+            .await
+            .unwrap();
+        let v: Value = serde_json::from_str(&out).expect("结果必须是合法 JSON");
+        assert_eq!(v["data"]["background"], true, "应被内核强制后台化: {v}");
+        assert!(
+            v["data"]["log_file"].as_str().is_some(),
+            "强制路径必须落日志文件: {v}"
+        );
+        assert_eq!(
+            v["data"]["termination"]["kind"], "exited",
+            "必须等进程真退出（exited），而不是超时: {v}"
+        );
+        assert_eq!(
+            v["data"]["exit_code"], 0,
+            "exit_code 必须是进程真实退出码: {v}"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}

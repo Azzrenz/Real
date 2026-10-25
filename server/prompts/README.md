@@ -15,6 +15,8 @@
 | `workflow/system.md` | `#persona` | 人格与执行纪律：模式判定、语言与风格、自主边界、执行方式、执行纪律、两条底线 | `context.rs` | 每轮常驻·最前 |
 | `workflow/narration.md` | `#narration` | 旁白形态：叙述纪律、对话态切换、输出形态、收敛即止、措辞 | `context.rs` | 每轮常驻 |
 | `workflow/journal.md` | `#journal` | 留痕纪律：工作日志与长期记忆**怎么记**（写到哪由记忆块给，见 §五） | `context.rs` | 每轮常驻 |
+| `workflow/output_discipline.md` | `#output_discipline` | 输出纪律：语言、思考骨架、思考禁忌（思考是草稿，不是交付） | `context.rs` | 每轮常驻 |
+| `workflow/output_discipline.md` | `#answer` | 答复纪律：**最终回复**的长度与结构（第一行结论 / ≤10 行 / 不分节 / 路径 ≤ 2 个 / 证据留在工具轨迹）。排在系统提示最末吃近因 | `context.rs` | 每轮常驻·最末 |
 | `workflow/round_frame.md` | `#frame` | 通道与预算：通道优先级、联网、参数预算、脚本库、语言提醒 + 目标槽位 | `workflow.rs` | 每任务一次 |
 | `workflow/round_frame.md` | `#memory` | 记忆包装框 | `workflow.rs` | 每任务一次·有记忆才注入 |
 | `workflow/mirror.md` | `#action` `#progress` `#attribution` `#terminate` | 触发式对账与归因 | `workflow.rs` | 触发式 |

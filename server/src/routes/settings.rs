@@ -198,6 +198,16 @@ async fn build_settings(state: &AppState, remote: bool) -> AppResult<Json<Value>
         crate::path::data_root::get_data_dir_setting(),
         crate::path::data_root::data_root().display().to_string(),
     );
+    // 设置面板「选盘」所需的两项本机信息：出厂默认根（D:\RealData）+ 可用盘符。
+    // 与上面的路径字段同口径：远程一律 null。
+    let (data_dir_default_view, data_drives_view) = if remote {
+        (Value::Null, Value::Null)
+    } else {
+        (
+            json!(crate::path::data_root::default_data_root_hint()),
+            json!(crate::path::data_root::available_drives()),
+        )
+    };
     Ok(Json(json!({
         "llm_mode": match s.llm_mode { crate::config::LlmMode::Real => "real", _ => "mock" },
         "model": s.model,
@@ -243,6 +253,9 @@ async fn build_settings(state: &AppState, remote: bool) -> AppResult<Json<Value>
         // 数据目录（标记值 + 当前生效根）——均本机绝对路径，远程收敛为 null（见 `local_paths_view`）
         "data_dir": data_dir_view,
         "data_root_effective": data_root_view,
+        // 出厂默认根（D:\RealData）+ 可用盘符：面板「选盘」直接给选项，不用用户手打路径
+        "data_dir_default": data_dir_default_view,
+        "data_drives": data_drives_view,
         "server": { "host": state.cfg.host, "port": state.cfg.port },
     })))
 }

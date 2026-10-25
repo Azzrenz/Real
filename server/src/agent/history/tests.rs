@@ -2170,67 +2170,68 @@ mod frame_replay_tests {
             .id
     }
 
-    /// 末条的 `content` 值（统一走 `Value::to_string()`，两侧同一把尺子）
-    fn last_content(items: &[InputItem]) -> String {
-        match items.last() {
-            Some(InputItem::Message { content, .. }) => content.to_string(),
-            other => panic!("末条不是 message：{other:?}"),
-        }
-    }
-
-    async fn row_item_json(pool: &sqlx::SqlitePool, id: &str) -> String {
-        let (js,): (String,) = sqlx::query_as("SELECT item_json FROM messages WHERE id = ?1")
-            .bind(id)
-            .fetch_one(pool)
-            .await
-            .unwrap();
-        js
-    }
-
+    /// 帧存档 → 重建必须把它**原样插回原位**（字节与位置都不能差）。
+    ///
+    /// 这条替换了旧的「写回同一行」测试：写回 messages 会把帧变成回合起点
+    ///（归档、轮日志 seq、前端气泡都按 user 行划界），所以帧改存 `round_frames`。
     #[tokio::test]
-    async fn 帧写回后重建得到同一字节() {
+    async fn 帧存档后重建在原位逐字节重现() {
         let pool = test_pool().await;
         let s = crate::db::repos::create_session(&pool, "t", "t").await.unwrap();
-        let row_id = insert_user_raw(&pool, &s.id, "把中段断点查清楚").await;
+        let anchor = insert_user_raw(&pool, &s.id, "把中段断点查清楚").await;
+        let _asst = crate::db::repos::insert_message(&pool, &s.id, "assistant", "好，先看日志", None)
+            .await
+            .unwrap();
+        let next = insert_user_raw(&pool, &s.id, "继续").await;
 
-        // ① 首次重建：末条是**用户原文**，且必须把它的库内行 id 交出来（workflow 要靠它写回）
-        let h1 = build_history(&pool, &s.id).await.unwrap();
-        assert_eq!(
-            h1.last_user_id.as_deref(),
-            Some(row_id.as_str()),
-            "末条 user 的行 id 必须交出，否则调用方无法把帧写回同一行"
-        );
-        let raw = last_content(&h1.items);
-        assert!(raw.contains("把中段断点查清楚"), "首次重建应拿到用户原文：{raw}");
-
-        // ② 模拟 workflow：渲染当轮帧，**替换**末条，并写回同一行
-        let frame = json!([{
-            "type": "input_text",
-            "text": "【本轮用户输入】把中段断点查清楚\n\n{contract}"
-        }])
-        .to_string();
-        crate::db::repos::update_message_item_content(&pool, &row_id, &frame)
+        // workflow 渲染出来的当轮帧（含记忆/规范，正是必须原样重现的那几段）
+        let frame = InputItem::Message {
+            role: "user".into(),
+            content: json!([{
+                "type": "input_text",
+                "text": "【本轮用户输入】（同上一条用户消息）\n\n## 工作规范（与本次任务相关）\n规则正文"
+            }]),
+            tool_calls: None,
+        };
+        let fj = serde_json::to_string(&frame).unwrap();
+        crate::db::repos::put_round_frame(&pool, &s.id, &anchor, &fj)
             .await
             .unwrap();
 
-        // ③ 再重建：**必须**逐字节等于刚写回的帧 ⇒ 下一个 run 不会在此分叉
-        let h2 = build_history(&pool, &s.id).await.unwrap();
+        let h = build_history(&pool, &s.id).await.unwrap();
+        assert_eq!(h.items.len(), 4, "顺序应为：原话 / 帧 / 回复 / 新原话");
         assert_eq!(
-            last_content(&h2.items),
-            frame,
-            "重建结果必须与写回的帧逐字节一致，否则该位置之后每轮按 miss 重算"
+            serde_json::to_string(&h.items[1]).unwrap(),
+            fj,
+            "帧必须逐字节重现——差一个字节，其后整段前缀作废"
         );
-        assert_eq!(h2.last_user_id.as_deref(), Some(row_id.as_str()), "行 id 应保持稳定");
-
-        // ④ 反例：帧与用户原文本就不同 —— 所以"不写回"必然分叉（这条是给未来的自己看的）
-        assert_ne!(raw, frame, "若两者相同，本机制就没有存在意义，说明帧没被真正渲染");
-
-        // ⑤ 只换 content：行的其余结构仍在（可反序列化回同一条 InputItem）
-        let stored = row_item_json(&pool, &row_id).await;
-        assert!(
-            serde_json::from_str::<InputItem>(&stored).is_ok(),
-            "写回后必须仍能反序列化为 InputItem：{stored}"
+        assert_eq!(
+            h.last_user_id.as_deref(),
+            Some(next.as_str()),
+            "锚点不得被帧顶掉：当轮原话的行 id 才是 workflow 要的"
         );
+        assert_eq!(
+            user_positions(&h.items),
+            vec![0, 3],
+            "帧不得进入回合起点列表"
+        );
+    }
+
+    /// 幂等：同一锚点重跑（重试/取消后重开）只留一条，不许堆叠。
+    #[tokio::test]
+    async fn 帧存档按锚点幂等覆盖() {
+        let pool = test_pool().await;
+        let s = crate::db::repos::create_session(&pool, "t", "t").await.unwrap();
+        let anchor = insert_user_raw(&pool, &s.id, "原话").await;
+        crate::db::repos::put_round_frame(&pool, &s.id, &anchor, "{\"first\":1}")
+            .await
+            .unwrap();
+        crate::db::repos::put_round_frame(&pool, &s.id, &anchor, "{\"second\":2}")
+            .await
+            .unwrap();
+        let frames = crate::db::repos::load_round_frames(&pool, &s.id).await.unwrap();
+        assert_eq!(frames.len(), 1, "同一锚点只应有一条");
+        assert_eq!(frames[&anchor], "{\"second\":2}", "后写的覆盖先写的");
     }
 }
 
@@ -2262,47 +2263,34 @@ mod stale_frame_tests {
         }
     }
 
+    /// 反过来钉住**当前决策**：历史帧一律不瘦身。
+    ///
+    /// 旧行为是「只留本轮用户输入，砍掉记忆/说明/规范」——省几 KB。但帧现在落
+    /// `round_frames` 并在下一轮**逐字节重放**，在这里裁剪它，等于让
+    /// 「重放内容 ≠ 上一轮真正发出的内容」⇒ 每条历史帧都变成一次断点（单次十几万 token）。
+    /// 总量交给发送前裁剪：整条丢弃，且切点不会落在帧上。
     #[test]
-    fn 旧帧只留本轮用户输入_近两帧原样() {
+    fn 历史帧一律不瘦身() {
         let mut items = vec![
             frame("旧任务A", true),
             frame("旧任务B", true),
             frame("近任务C", true),
             frame("当轮D", true),
         ];
-        let saved = trim_stale_frames(&mut items, 2, 0);
-        assert!(saved > 0, "前两个回合的帧应当被瘦身");
-        assert_eq!(text_of(&items[0]), "【本轮用户输入】旧任务A", "只留 goal");
-        assert_eq!(text_of(&items[1]), "【本轮用户输入】旧任务B");
-        assert!(text_of(&items[2]).contains("【项目上下文】"), "近 2 回合须保全貌");
-        assert!(text_of(&items[3]).contains("## 工作规范"), "当轮帧更不许动");
-        // 幂等：已经瘦过的不再产生收益（也就不会再记一条 ctx.rewrite）
-        assert_eq!(trim_stale_frames(&mut items, 2, 0), 0, "瘦身必须幂等");
-    }
-
-    /// 门槛：**省不到线就一处不动**。
-    #[test]
-    fn 旧帧瘦身_省不到门槛就一处不动() {
-        let mut items = vec![
-            frame("旧任务A", true),
-            frame("旧任务B", true),
-            frame("当轮C", true),
-        ];
         let before: Vec<String> = items.iter().map(text_of).collect();
         assert_eq!(
-            trim_stale_frames(&mut items, 1, 1_000_000),
+            trim_stale_frames(&mut items, 1, 0),
             0,
-            "够不到门槛应返回 0"
+            "门槛归零也不许动帧——省下的字节远小于重新预填一次前缀的代价"
         );
         assert_eq!(
             items.iter().map(text_of).collect::<Vec<_>>(),
             before,
-            "够不到门槛时一个字都不该动"
+            "帧必须逐字节保持原样"
         );
-        // 门槛归零（冷缓存）⇒ 正常瘦身
-        assert!(trim_stale_frames(&mut items, 1, 0) > 0, "门槛归零应正常瘦身");
     }
 
+    /// 门槛与段界判据仍在（函数保留作将来「整条丢弃帧」的入口，当前不裁剪）。
     #[test]
     fn 找不到段界就一个字不动() {
         // 裸帧（没有记忆/说明/规范）：不能猜着砍 —— 宁可不动，不可改错
