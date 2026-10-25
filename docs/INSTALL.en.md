@@ -13,7 +13,7 @@ evidence at every step.
 
 ### Option 1 — Installer (recommended for most people)
 
-**File**: `Real_0.1.0_x64_en-US.msi` (~215 MB)
+**File**: `Real_0.1.0_x64_en-US.msi` (~217 MB)
 
 1. Double-click the `.msi`
 2. Click **Next → Install** (it will ask for administrator rights — that's expected)
@@ -27,13 +27,13 @@ both bundled inside the installer.
 
 ### Option 2 — Portable (USB stick, another PC, no installation)
 
-**File**: `Real-0.1.0-win-x64.zip` (~11 MB)
+**File**: `Real-0.1.0-win-x64.zip` (~12 MB)
 
 1. Extract the zip anywhere (a USB stick works)
 2. Double-click **`real-client.exe`**
 
-**Your data travels with the folder** — copy the folder to another machine and your sessions and
-project memories come along. "Uninstalling" means deleting the folder.
+"Uninstalling" just means deleting that folder. Note that **your data does not live in the folder**
+(it defaults to `D:\RealData`, see section 4), so copy it separately when moving machines.
 
 - Requirement: the system must already have the **WebView2 runtime**.
   Windows 11 and recent Windows 10 ship with it; older systems should use Option 1 instead.
@@ -49,8 +49,9 @@ project memories come along. "Uninstalling" means deleting the folder.
 
 ## 3. API key (required)
 
-Real does not think on its own — it needs a model as its brain. Without a key, tasks report
-"model not configured" instead of pretending to work.
+Real does not think on its own — it needs a model as its brain. Without a key the backend falls back
+to a built-in **mock model**: the flow works end to end, but the replies are not real. Fill in a key
+before you actually use it.
 
 **To connect a model:**
 
@@ -60,25 +61,29 @@ Real does not think on its own — it needs a model as its brain. Without a key,
 
 ## 4. Where is my data?
 
-By default:
+By default on the **D drive**:
 
 ```
-%APPDATA%\real-agent
-(i.e. C:\Users\<you>\AppData\Roaming\real-agent)
+D:\RealData
 ```
 
-It contains your database (chat history), logs, and project memories.
+It contains `db/` (chat history), `logs/`, `spill/`, `tmp/`, `skills/`, `providers/`.
 
-**To relocate it**: set the data directory in Settings, or set the `REAL_DATA_DIR` environment
-variable.
+On a machine without a D drive it falls back to `%APPDATA%\real-agent`.
 
-> Portable bonus: when the whole folder is moved, your data moves with it.
+**To relocate it**: open Settings → Data directory and click a drive (picking `E:` gives
+`E:\RealData`), or type any absolute path. It takes effect on restart, and at startup the old
+directory's data is migrated into the new one (the source is kept, so you can roll back). The
+`REAL_DATA_DIR` environment variable also works.
+
+> Portable note: the program folder can be moved freely, but the data stays in `D:\RealData` —
+> take it along separately when switching machines.
 
 ## 5. Uninstalling
 
 | | How |
 |---|---|
-| Option 1 (installer) | Settings → Apps → find Real → Uninstall. The data folder `%APPDATA%\real-agent` is removed separately, if you want it gone |
+| Option 1 (installer) | Settings → Apps → find Real → Uninstall. The data folder (by default `D:\RealData`, else `%APPDATA%\real-agent`) is removed separately, if you want it gone |
 | Option 2 (portable) | Delete the folder. That's it |
 
 ## 6. Notes

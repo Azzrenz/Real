@@ -325,7 +325,7 @@ Real/
 > **API Key 必填。** 在 `server/.env` 填 `DEEPSEEK_API_KEY`（或智谱的 Key），
 > 也可以在应用的 Settings 里填。没有 Key 时任务会明确报「未配置模型」，不会假装在干活。
 
-日志落在数据根的 `logs/` 下（Windows 默认 `%APPDATA%\real-agent\logs`）。
+日志落在数据根的 `logs/` 下（Windows 默认 `D:\RealData\logs`；机器上没有 D 盘时回落 `%APPDATA%\real-agent\logs`）。
 后端起不来时脚本会把日志尾部直接打在屏幕上。
 
 ### 方式三：手动
@@ -415,10 +415,14 @@ curl http://127.0.0.1:8943/ready    # 就绪（DB 已连、工具面已注册）
 运行期数据**不在仓库里**。数据根按优先级解析：
 
 ```
-REAL_DATA_DIR 环境变量  >  设置面板标记  >  %APPDATA%/real-agent  >  项目根 .real/
+REAL_DATA_DIR 环境变量  >  设置面板选定的目录  >  D:\RealData（出厂默认）  >  %APPDATA%/real-agent（无 D 盘时回落）  >  项目根 .real/
 ```
 
-其中包含 SQLite 数据库、日志、spill 归档、记忆与工作日志。
+默认落 **D 盘**（`D:\RealData`）：`db/`（SQLite）、`logs/`、`spill/`、`tmp/`、`skills/`、`providers/`、`attachments/`、`archive/`。
+
+- **换盘/换位置**：设置 →「数据目录」，面板直接给出可用盘符（选 `E:` 即落 `E:\RealData`），也可手填任意绝对路径。改后**重启生效**。
+- **首次启动自动迁移**：新位置还没有库、而旧位置（C 盘）有数据时，启动会把旧目录整目录复制到新位置（连 `-wal`/`-shm` 一起），**源目录保留**，想回滚改回 C 盘即可。
+- 为什么不默认 C 盘：`%APPDATA%` 会随重装系统一起消失，重装后数据和设置一起清零。
 
 `.gitignore` 已按「人写的源码进仓库 / 机器生成的产物与私有数据不进仓库」这一条判据覆盖全部分类。
 
