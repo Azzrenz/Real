@@ -1,6 +1,6 @@
 # Real — Installation & Getting Started
 
-**Version**: v0.1.0 · Windows x64
+**Version**: v0.1.2 · Windows x64
 **Repository**: https://github.com/Azzrenz/Real
 
 Real is a **local-first AI agent workbench**. Give it a project directory and a one-line request;
@@ -13,7 +13,7 @@ evidence at every step.
 
 ### Option 1 — Installer (recommended for most people)
 
-**File**: `Real_0.1.0_x64_en-US.msi` (~217 MB)
+**File**: `Real_0.1.2_x64_en-US.msi` (~12 MB)
 
 1. Double-click the `.msi`
 2. Click **Next → Install** (it will ask for administrator rights — that's expected)
@@ -27,7 +27,7 @@ both bundled inside the installer.
 
 ### Option 2 — Portable (USB stick, another PC, no installation)
 
-**File**: `Real-0.1.0-win-x64.zip` (~12 MB)
+**File**: `Real-0.1.2-win-x64.zip` (~12 MB)
 
 1. Extract the zip anywhere (a USB stick works)
 2. Double-click **`real-client.exe`**
