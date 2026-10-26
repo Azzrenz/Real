@@ -113,7 +113,7 @@ ManifestType: installer
 ManifestVersion: 1.6.0
 """
 
-WINGET_LOCALE = """# yaml-language-server: $schema=https://aka.ms/winget-manifest.locale.1.6.0.schema.json
+WINGET_LOCALE = """# yaml-language-server: $schema=https://aka.ms/winget-manifest.defaultLocale.1.6.0.schema.json
 PackageIdentifier: Azzrenz.Real
 PackageVersion: {version}
 PackageLocale: zh-CN
@@ -129,7 +129,7 @@ Tags:
   - agent
   - local-first
   - tauri
-ManifestType: locale
+ManifestType: defaultLocale
 ManifestVersion: 1.6.0
 """
 
