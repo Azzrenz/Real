@@ -1,24 +1,20 @@
 # Real
 
 <p>
-  <a href="https://github.com/Azzrenz/Real/releases/latest"><img alt="Release" src="https://img.shields.io/badge/release-0.1.0-2ea44f"></a>
+  <a href="https://github.com/Azzrenz/Real/releases/latest"><img alt="Release" src="https://img.shields.io/github/v/release/Azzrenz/Real"></a>
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-MIT-blue"></a>
   <img alt="Platform" src="https://img.shields.io/badge/platform-Windows%20%C2%B7%20verified-lightgrey">
   <img alt="Stack" src="https://img.shields.io/badge/stack-Rust%20%2B%20Tauri%202-orange">
 </p>
 
-### 最有安全感，最高效。
+### 它做什么
 
-**它不承诺不出错。它承诺不骗你。**
+给它一个文件夹、一句话，它在本地读文件、改文件、跑命令，做完把结果交回来。
 
-这两个词通常不能同时说——安全靠多查，多查就慢。
-Real 能同时说，因为它们其实是同一个动作：**该由后端算的事，不拿去问模型。**
+需要核对的数字由后端算，不由模型自述：改没改，扫磁盘；花了多少，读 usage 里的原始数字；
+编译完没完，看进程退出码。判得出就判，判不出就说判不出。
 
-改没改，扫磁盘；花了多少，报 usage 里的原始数字；编译完没完，看进程退出码。
-每一条都在本地一次算完，同时省掉一次往返。**快不是优化出来的，是兜底省下来的。**
-
-Real 是一个装在 Windows 上的开源 AI 工具：给它一个文件夹、一句话，
-它在那里读文件、改文件、跑命令，做完了才回来。
+Real 是一个装在 Windows 上的开源 AI 工具，数据在本地，不云同步。
 
 | | |
 |---|---|
