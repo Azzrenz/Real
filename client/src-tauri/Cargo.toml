@@ -1,6 +1,6 @@
 [package]
 name = "real-client"
-version = "0.1.1"
+version = "0.1.2"
 description = "Real Agent 工作台（Tauri 壳）"
 edition = "2021"
 

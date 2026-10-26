@@ -1,12 +1,12 @@
 {
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "本地 AI 工作台——模型负责判断，代码负责事实。",
   "homepage": "https://github.com/Azzrenz/Real",
   "license": "MIT",
   "architecture": {
     "64bit": {
-      "url": "https://github.com/Azzrenz/Real/releases/download/v0.1.1/Real-0.1.1-win-x64.zip",
-      "hash": "b29e7fc028fc5c07e17849ef6de7481e1dc24bcde59332049476de3b3d62b00d"
+      "url": "https://github.com/Azzrenz/Real/releases/download/v0.1.2/Real-0.1.2-win-x64.zip",
+      "hash": "1984fd42d25cbbca7c8fe8adf9c5102996f823e91ee7322267957453d210486c"
     }
   },
   "shortcuts": [
