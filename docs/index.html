@@ -3,11 +3,16 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Real · 让 AI 真正干活的本地 Agent 工作台</title>
-<meta name="description" content="Real 是一个跑在 Windows 上的本地 AI Agent 工作台：给一个文件夹和一句话，它自己读文件、改文件、跑命令，一轮轮改到交付。开源 MIT。">
-<meta property="og:title" content="Real · 让 AI 真正干活的本地 Agent 工作台">
-<meta property="og:description" content="给一个文件夹和一句话，它自己读文件、改文件、跑命令，一轮轮改到交付。">
-<meta property="og:image" content="./assets/01-welcome.png">
+<title>Real · 最有安全感的 Agent，也最高效</title>
+<meta name="description" content="它不承诺不出错，承诺不骗你：改没改扫磁盘、花了多少报原始数字、编译完没完看退出码。该由后端算的事不拿去问模型，所以快是兜底省下来的。开源 MIT，Windows 已验证。">
+<meta property="og:title" content="Real · 最有安全感的 Agent，也最高效">
+<meta property="og:description" content="它不承诺不出错，承诺不骗你。改没改扫磁盘、花了多少报原始数字、编译完没完看退出码。">
+<meta property="og:image" content="https://azzrenz.github.io/Real/assets/og-card.png">
+<meta property="og:image:width" content="1280">
+<meta property="og:image:height" content="640">
+<meta property="og:type" content="website">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://azzrenz.github.io/Real/assets/og-card.png">
 <style>
   :root{
     --ink:#14140f; --sub:#5c5c54; --line:#e6e2da; --bg:#fbfaf7; --card:#fff;
@@ -71,8 +76,8 @@
     <span class="badge">Rust + Tauri 2</span>
   </div>
 
-  <h1>让 AI 真正<span>干活</span>的<br>本地 Agent 工作台</h1>
-  <p class="lead">给它一个文件夹和一句话。整理文件、批量改名、跑视频流水线、给项目加功能——它自己动手，改到你说「可以了」。全程在你电脑上，文件不外传。</p>
+  <h1>最有<span>安全感</span>，<br>最高效。</h1>
+  <p class="lead">它不承诺不出错，承诺不骗你。改没改扫磁盘，花了多少报 usage 原始数字，编译完没完看进程退出码——该由后端算的事，它不拿去问模型，所以快是兜底省下来的。给它一个文件夹和一句话，剩下的它自己动手，全程在你电脑上，文件不外传。</p>
 
   <div class="cta">
     <a class="btn primary" href="https://github.com/Azzrenz/Real/releases/latest">下载 Windows 便携版 · 12MB</a>
@@ -103,7 +108,7 @@
     </div>
     <div class="card">
       <h3>给项目加功能</h3>
-      <p>「加一个深色主题」——它读代码、改多处、跑测试，改坏了自己回滚重来。</p>
+      <p>「加一个深色主题」——它读代码、改多处、跑测试；改完把改了哪几处列出来，你自己核。</p>
     </div>
     <div class="card">
       <h3>读一堆文档给你结论</h3>
@@ -126,7 +131,8 @@
   </ol>
   <div class="note">
     首次启动窗口可能要等几秒：后端要建库、起服务。数据全部落在本机
-    <code>%APPDATA%\real-agent</code>，只有对话内容会发给模型接口。
+    <code>D:\RealData</code>（没有 D 盘时回落到 <code>%APPDATA%\real-agent</code>），
+    只有对话内容会发给模型接口。卸载程序不会删这个目录，换电脑要单独带走。
   </div>
 </section>
 
