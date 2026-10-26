@@ -7,6 +7,8 @@
   <img alt="Stack" src="https://img.shields.io/badge/stack-Rust%20%2B%20Tauri%202-orange">
 </p>
 
+**能交给模型的都交给模型，能算准的都交给后端。**
+
 ### 这是什么
 
 Real 是一个装在 Windows 上的本地 AI 工作台（开源，MIT）。
