@@ -1,6 +1,6 @@
 [package]
 name = "real-server"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 description = "Real Agent 后端：确定性收敛循环（锚定→薄任务板→执行→证据→收敛）· MCP 工具契约 · DeepSeek Responses API"
 license = "MIT"

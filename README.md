@@ -328,6 +328,20 @@ Real/
 | Python | 3.9+ | 否（语法与导入校验会用到；未装时自动降级） |
 | Tauri 2 系统依赖 | — | 仅桌面壳需要，见 [官方前置条件](https://tauri.app/start/prerequisites/) |
 
+### 方式零：一条命令（Windows 包管理器）
+
+```powershell
+# 绿色版：解压即用，不写注册表、不动系统目录
+scoop install https://raw.githubusercontent.com/Azzrenz/Real/main/scoop/real.json
+
+# 安装版：清单已提交 microsoft/winget-pkgs，审核通过后可直接
+winget install Azzrenz.Real
+```
+
+> **为什么不是 `npx`**：`npx` 那种「一行命令直接跑」的前提是源码本身可执行（Node 项目）。
+> Real 是 Rust + Tauri 的桌面程序，用户拿到必须是编译好的二进制——所以等价物是包管理器：
+> 一条命令装好，双击即用。两条清单由 `scripts/release/release.py` 在每次发版时自动生成。
+
 ### 方式一：Windows 安装包（零依赖）
 
 从 [Releases](https://github.com/Azzrenz/Real/releases/latest) 页下载 `.msi` 安装即可 —— **不需要装 Node 或 Rust**。
