@@ -113,7 +113,6 @@ export function TuningSection() {
             <button
               className={`seg-btn${memoryScope !== 'session' ? ' active' : ''}`}
               title={t('同一个工作区（项目）下的会话互相看见长期记忆：结论、已做改动、主题、偏好、凭证。')}
-              disabled
               onClick={() => {
                 patch({ memoryScope: 'shared' });
                 void saveToBackend();
@@ -124,7 +123,6 @@ export function TuningSection() {
             <button
               className={`seg-btn${memoryScope === 'session' ? ' active' : ''}`}
               title={t('只有本任务读得到自己的长期记忆：工作区域的记忆不注入，本任务的记录也不落进工作区域。')}
-              disabled
               onClick={() => {
                 patch({ memoryScope: 'session' });
                 void saveToBackend();
