@@ -46,7 +46,9 @@ mod syntax_tests {
     use super::*;
     use serde_json::json;
 
-    // broken edit（产生 IndentationError）必须被语法护栏拦截，并回滚到修改前
+    // broken edit（产生 IndentationError）：校验器可用 ⇒ 拦截并回滚；
+    // 校验器不可用（本机无 Python / 商店 stub）⇒ **必须放行**（判不出 ≠ 判失败，
+    // 2026-10-25 基准实证：误把 stub 报错当语法错，回滚掉了好编辑）。
     #[tokio::test]
     async fn edit_producing_syntax_error_is_rejected_and_rolled_back() {
         let dir = std::env::temp_dir().join(format!("real_syn_{}", std::process::id()));
@@ -58,14 +60,41 @@ mod syntax_tests {
         // old 缺省→按行定位；new="try:" 使函数体缩进非法 → IndentationError
         let args =
             json!({"file": p.display().to_string(), "replacements":[{"line":2,"new":"try:"}]});
-        let err = t.run(args).await.unwrap_err();
-        assert!(
-            err.contains("SYNTAX_ERROR"),
-            "broken edit 必须被语法护栏拦截: {err}"
-        );
-        let restored = std::fs::read_to_string(&p).unwrap();
-        assert_eq!(restored, original, "必须回滚到修改前内容");
+        match resolve_python_exe() {
+            Some(_) => {
+                let err = t.run(args).await.unwrap_err();
+                assert!(
+                    err.contains("SYNTAX_ERROR"),
+                    "校验器可用时，broken edit 必须被语法护栏拦截: {err}"
+                );
+                let restored = std::fs::read_to_string(&p).unwrap();
+                assert_eq!(restored, original, "必须回滚到修改前内容");
+            }
+            None => {
+                // 判不出：编辑正常生效，不得因为「校验器跑不起来」误伤
+                let ok = t.run(args).await;
+                assert!(ok.is_ok(), "校验器不可用时必须放行: {ok:?}");
+            }
+        }
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // 误杀回归（2026-10-25 三轮基准实证）：微软商店 stub / 缺安装 / 权限拒绝的 stderr
+    // 绝不能被当成语法错误——「判不出」必须放行。
+    #[test]
+    fn stub_python_output_is_not_a_syntax_error() {
+        let stub = "Python was not found; run without arguments to install from the Microsoft Store, \
+or disable this shortcut from Settings > Apps > Advanced app settings > App execution aliases.";
+        assert!(!looks_like_py_error(stub), "商店 stub 提示不是语法错误");
+        assert!(!looks_like_py_error("Permission denied"), "权限问题不是语法错误");
+        assert!(!looks_like_py_error(""), "空输出不是语法错误");
+        let real = r#"  File "x.py", line 2
+    def f(
+          ^
+SyntaxError: '(' was never closed
+"#;
+        assert!(looks_like_py_error(real), "真语法错误必须被识别");
+        assert!(looks_like_py_error("IndentationError: unexpected indent"), "单行 Error: 也要认");
     }
 
     // （契约漏洞回归）：单行模式只传 line 缺 new → 必须返回 INVALID_PARAM

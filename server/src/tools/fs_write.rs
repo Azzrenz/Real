@@ -1131,10 +1131,15 @@ fn find_not_found_hint(content: &str, find: &str) -> String {
 
 /// 写后语法校验（仅 Python 文件）：broken edit（缩进/语法错误）立即暴露，避免落盘后
 async fn check_python_syntax(path: &std::path::Path) -> Result<(), String> {
+    // 解释器不可用 = 这项判定做不了：放行（判不出，不是判失败）
+    let Some(py) = resolve_python_exe() else {
+        tracing::debug!("语法校验跳过：本机找不到可用的 Python 解释器");
+        return Ok(());
+    };
     let p = path.to_path_buf();
     // 用 spawn_blocking 跑同步的 std::process（不依赖 tokio process feature）
     let res = tokio::task::spawn_blocking(move || {
-        std::process::Command::new(resolve_python_exe())
+        std::process::Command::new(py)
             .args(["-m", "py_compile", &p.display().to_string()])
             // CREATE_NO_WINDOW：无控制台壳拉起时不弹黑窗
             .creation_flags(0x0800_0000)
@@ -1147,6 +1152,11 @@ async fn check_python_syntax(path: &std::path::Path) -> Result<(), String> {
                 Ok(())
             } else {
                 let msg = String::from_utf8_lossy(&o.stderr).to_string();
+                if !looks_like_py_error(&msg) {
+                    // 解释器跑起来了但输出不是语法错误签名：能力不足，不拦、不回滚
+                    tracing::debug!(stderr = %msg.chars().take(200).collect::<String>(), "语法校验判不出，放行");
+                    return Ok(());
+                }
                 // py_compile 在 stderr 末尾打印 "SyntaxError: ..."，取最后非空行作为精炼错误
                 let last = msg
                     .lines()
@@ -1162,19 +1172,80 @@ async fn check_python_syntax(path: &std::path::Path) -> Result<(), String> {
 }
 
 /// 解析用于写后校验的 Python 解释器
-fn resolve_python_exe() -> String {
-    if let Ok(env_py) = std::env::var("REAL_PYTEST_PYTHON") {
-        if !env_py.is_empty() && std::path::Path::new(&env_py).exists() {
-            return env_py;
-        }
-    }
-    "python".to_string()
+/// 校验器输出是否真的像「Python 语法错误」。
+///
+/// 只认 `File "…", line N` / `Error:` / `SyntaxError` 三种签名；微软商店别名 stub 的
+/// `Python was not found…`、缺安装、权限拒绝都不在此列——那些是**判不出**，不是**判失败**。
+fn looks_like_py_error(stderr: &str) -> bool {
+    stderr.contains("Error:")
+        || stderr.contains("SyntaxError")
+        || (stderr.contains("File \"") && stderr.contains(", line "))
+}
+
+fn resolve_python_exe() -> Option<String> {
+    static CHOSEN: std::sync::OnceLock<Option<String>> = std::sync::OnceLock::new();
+    CHOSEN
+        .get_or_init(|| {
+            let mut cands: Vec<String> = Vec::new();
+            if let Ok(p) = std::env::var("REAL_PYTEST_PYTHON") {
+                if !p.is_empty() && std::path::Path::new(&p).exists() {
+                    cands.push(p);
+                }
+            }
+            cands.push("python".into());
+            cands.push("py".into());
+            // 常见安装位：%LOCALAPPDATA%\Programs\Python\Python3xx\python.exe
+            if let Ok(local) = std::env::var("LOCALAPPDATA") {
+                let base = std::path::Path::new(&local).join("Programs").join("Python");
+                if let Ok(rd) = std::fs::read_dir(&base) {
+                    for e in rd.flatten() {
+                        let p = e.path().join("python.exe");
+                        if p.exists() {
+                            cands.push(p.display().to_string());
+                        }
+                    }
+                }
+            }
+            // C:\Python3xx\python.exe
+            if let Ok(rd) = std::fs::read_dir("C:\\") {
+                for e in rd.flatten() {
+                    if e.file_name().to_string_lossy().to_lowercase().starts_with("python") {
+                        let p = e.path().join("python.exe");
+                        if p.exists() {
+                            cands.push(p.display().to_string());
+                        }
+                    }
+                }
+            }
+            // 逐个真跑 --version 验证：商店 stub 会返回失败或打印商店提示，被剔除
+            for c in cands {
+                if let Ok(o) = std::process::Command::new(&c)
+                    .arg("--version")
+                    .creation_flags(0x0800_0000)
+                    .output()
+                {
+                    let txt = format!(
+                        "{}{}",
+                        String::from_utf8_lossy(&o.stdout),
+                        String::from_utf8_lossy(&o.stderr)
+                    );
+                    if o.status.success() && txt.contains("Python ") {
+                        return Some(c);
+                    }
+                }
+            }
+            None
+        })
+        .clone()
 }
 
 /// 写后"导入有效性"校验（仅 Python 文件，增量2）
 async fn check_python_imports(path: &std::path::Path) -> Result<Option<String>, String> {
+    // 解释器不可用 = 这项判定做不了：跳过（判不出，不是判失败）
+    let Some(py) = resolve_python_exe() else {
+        return Ok(None);
+    };
     let p = path.to_path_buf();
-    let py = resolve_python_exe();
     let res = tokio::task::spawn_blocking(move || -> Result<std::process::Output, std::io::Error> {
         let checker = r#"
 import ast, importlib, importlib.util, os, sys
