@@ -1132,7 +1132,7 @@ fn find_not_found_hint(content: &str, find: &str) -> String {
 /// 写后语法校验（仅 Python 文件）：broken edit（缩进/语法错误）立即暴露，避免落盘后
 async fn check_python_syntax(path: &std::path::Path) -> Result<(), String> {
     // 解释器不可用 = 这项判定做不了：放行（判不出，不是判失败）
-    let Some(py) = resolve_python_exe() else {
+    let Some(py) = resolve_python_for(path) else {
         tracing::debug!("语法校验跳过：本机找不到可用的 Python 解释器");
         return Ok(());
     };
@@ -1171,7 +1171,6 @@ async fn check_python_syntax(path: &std::path::Path) -> Result<(), String> {
     }
 }
 
-/// 解析用于写后校验的 Python 解释器
 /// 校验器输出是否真的像「Python 语法错误」。
 ///
 /// 只认 `File "…", line N` / `Error:` / `SyntaxError` 三种签名；微软商店别名 stub 的
@@ -1182,6 +1181,35 @@ fn looks_like_py_error(stderr: &str) -> bool {
         || (stderr.contains("File \"") && stderr.contains(", line "))
 }
 
+/// 从目标文件向上找项目虚拟环境里的解释器。
+///
+/// 优先级与 `specs/rules/python_env.md` 一致：`.venv` → `venv` → `.conda`；
+/// Windows 取 `Scripts/python.exe`，其余平台取 `bin/python`。
+/// 只判存在、不跑 `--version`：venv 里的解释器若坏掉，调用方会因
+/// 「判不出即放行」兜住，不会误杀编辑。
+fn venv_python_for(target: &std::path::Path) -> Option<String> {
+    let mut dir = target.parent()?;
+    for _ in 0..8 {
+        for env in [".venv", "venv", ".conda"] {
+            let base = dir.join(env);
+            for exe in ["Scripts/python.exe", "bin/python"] {
+                let p = base.join(exe);
+                if p.is_file() {
+                    return Some(p.display().to_string());
+                }
+            }
+        }
+        dir = dir.parent()?;
+    }
+    None
+}
+
+/// 校验用解释器：**先项目 venv，再全局**（与 python_env.md 的次序判据对齐）。
+fn resolve_python_for(target: &std::path::Path) -> Option<String> {
+    venv_python_for(target).or_else(resolve_python_exe)
+}
+
+/// 解析用于写后校验的 Python 解释器：只认**真能跑起来**的那个。
 fn resolve_python_exe() -> Option<String> {
     static CHOSEN: std::sync::OnceLock<Option<String>> = std::sync::OnceLock::new();
     CHOSEN
@@ -1242,7 +1270,7 @@ fn resolve_python_exe() -> Option<String> {
 /// 写后"导入有效性"校验（仅 Python 文件，增量2）
 async fn check_python_imports(path: &std::path::Path) -> Result<Option<String>, String> {
     // 解释器不可用 = 这项判定做不了：跳过（判不出，不是判失败）
-    let Some(py) = resolve_python_exe() else {
+    let Some(py) = resolve_python_for(path) else {
         return Ok(None);
     };
     let p = path.to_path_buf();

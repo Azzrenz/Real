@@ -60,7 +60,7 @@ mod syntax_tests {
         // old 缺省→按行定位；new="try:" 使函数体缩进非法 → IndentationError
         let args =
             json!({"file": p.display().to_string(), "replacements":[{"line":2,"new":"try:"}]});
-        match resolve_python_exe() {
+        match resolve_python_for(&p) {
             Some(_) => {
                 let err = t.run(args).await.unwrap_err();
                 assert!(
@@ -77,6 +77,34 @@ mod syntax_tests {
             }
         }
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // 判据对齐（python_env.md）：项目 venv 优先，且只判存在、不跑解释器。
+    #[test]
+    fn venv_python_is_preferred_over_global() {
+        let dir = std::env::temp_dir().join(format!("real_venv_{}", std::process::id()));
+        let proj = dir.join("proj");
+        let src_dir = proj.join("src");
+        std::fs::create_dir_all(src_dir.join("..").join(".venv").join("Scripts")).unwrap();
+        std::fs::create_dir_all(&src_dir).unwrap();
+        let fake_py = proj.join(".venv").join("Scripts").join("python.exe");
+        std::fs::write(&fake_py, b"").unwrap();
+        let target = src_dir.join("a.py");
+        std::fs::write(&target, b"x = 1\n").unwrap();
+
+        let got = venv_python_for(&target);
+        assert!(got.is_some(), "应能找到项目 venv 里的解释器");
+        assert_eq!(
+            got.unwrap().replace('\\', "/").to_lowercase(),
+            fake_py.display().to_string().replace('\\', "/").to_lowercase(),
+            "必须优先返回项目 venv 的解释器"
+        );
+        // 不在项目内的文件不应命中该 venv
+        let outside = std::env::temp_dir().join("outside_probe.py");
+        std::fs::write(&outside, b"x = 1\n").unwrap();
+        assert!(venv_python_for(&outside).is_none() || venv_python_for(&outside) != Some(fake_py.display().to_string()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let _ = std::fs::remove_file(&outside);
     }
 
     // 误杀回归（2026-10-25 三轮基准实证）：微软商店 stub / 缺安装 / 权限拒绝的 stderr
