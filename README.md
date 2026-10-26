@@ -47,6 +47,10 @@ Real 是 Windows 上的本地 AI 工作台（开源，MIT）。读代码、改�
 
 停机不是封死：回一句「继续」，带断点和已有发现接着跑。一次都没改过文件的任务按「只诊断」看待，30 轮才收口——长任务的开头不该被误杀。
 
+![12 个乱名文件按月份归好](screenshots/00-demo.gif)
+
+<sub>这是它跑一次整理任务的样子：12 个乱名文件 → 4 个文件夹，实际用时 21 秒。GIF 已压到 10 秒、760KB。</sub>
+
 ### 下载哪个
 
 | 版 | 体积 | 拿到手是什么 |
@@ -71,9 +75,7 @@ scoop install https://raw.githubusercontent.com/Azzrenz/Real/main/scoop/real.jso
 
 **没有 API Key 也能进。** 内置一个模拟模型：界面、流程、工具调用都走得通，但回复是假的，不会真动你的文件。要它真干活，去「设置 → 模型与凭据」填一个 Key，OpenAI 兼容接口都行。
 
-<!-- 待录：45–60 秒演示。录好后取消下面这行注释，并删掉本行提示。
-![一句话跑完一个任务](screenshots/00-demo.gif)
--->
+
 
 > **项目还在开发中**，功能还在往上加，接口和界面可能调整。当前版本可以正常使用；
 > 想要稳定版请从 [Releases](https://github.com/Azzrenz/Real/releases) 下载，跟着 `main` 走则是开发中版本。
